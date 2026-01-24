@@ -740,17 +740,7 @@
         padding: 1rem;
         background: var(--color-parchment);
         border-radius: var(--radius-sm);
-        cursor: pointer;
-        transition: all var(--transition-fast);
-    }
-
-    .category-score-item:hover {
-        background: rgba(184, 134, 11, 0.08);
-    }
-
-    .category-score-item.expanded {
-        background: var(--color-white);
-        box-shadow: var(--shadow-soft);
+        margin-bottom: 0.5rem;
     }
 
     .category-header {
@@ -765,18 +755,6 @@
         display: flex;
         justify-content: space-between;
         flex: 1;
-    }
-
-    .category-toggle {
-        width: 20px;
-        height: 20px;
-        margin-left: 0.5rem;
-        transition: transform var(--transition-fast);
-        color: var(--color-ink-muted);
-    }
-
-    .category-score-item.expanded .category-toggle {
-        transform: rotate(180deg);
     }
 
     .category-score-value {
@@ -799,14 +777,9 @@
     }
 
     .category-attributes {
-        display: none;
         margin-top: 1rem;
         padding-top: 1rem;
         border-top: 1px solid var(--color-parchment-dark);
-    }
-
-    .category-score-item.expanded .category-attributes {
-        display: block;
     }
 
     .attribute-item {
@@ -863,18 +836,6 @@
         font-size: 0.8rem;
         color: var(--color-ink-light);
         line-height: 1.4;
-    }
-
-    .category-expand-hint {
-        font-size: 0.75rem;
-        color: var(--color-ink-muted);
-        margin-top: 0.5rem;
-        text-align: center;
-        opacity: 0.7;
-    }
-
-    .category-score-item.expanded .category-expand-hint {
-        display: none;
     }
 
     .issue-item {
@@ -2371,21 +2332,12 @@
                                 <span>${category}</span>
                                 <span class="category-score-value">${score}%</span>
                             </div>
-                            ${hasAttributes ? `<svg class="category-toggle" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 9l-7 7-7-7"/></svg>` : ''}
                         </div>
                         <div class="category-bar">
                             <div class="category-bar-fill" style="width: 0%"></div>
                         </div>
-                        ${hasAttributes ? `<div class="category-expand-hint">Click to see details</div>` : ''}
-                        ${hasAttributes ? `<div class="category-attributes">${attributesHTML}</div>` : ''}
+                        ${hasAttributes ? `<div class="category-attributes" style="display: block;">${attributesHTML}</div>` : ''}
                     `;
-                    
-                    // Add click handler for expansion
-                    if (hasAttributes) {
-                        item.addEventListener('click', () => {
-                            item.classList.toggle('expanded');
-                        });
-                    }
                     
                     catContent.appendChild(item);
                     setTimeout(() => {
