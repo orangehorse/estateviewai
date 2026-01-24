@@ -689,8 +689,21 @@ Be thorough, specific, and actionable. Prioritize practical guidance over genera
     res.end();
 
   } catch (error) {
-    console.error(error);
-    send({ error: error.message || 'Analysis failed' });
+    console.error('Analysis error:', error.message);
+    console.error('Stack:', error.stack);
+    
+    let errorMessage = 'Analysis failed';
+    if (error.message?.includes('timeout')) {
+      errorMessage = 'Analysis timed out. Please try again.';
+    } else if (error.message?.includes('rate')) {
+      errorMessage = 'API rate limit reached. Please wait a moment and try again.';
+    } else if (error.message?.includes('overloaded')) {
+      errorMessage = 'Service is busy. Please try again in a few moments.';
+    } else if (error.message) {
+      errorMessage = error.message;
+    }
+    
+    send({ error: errorMessage });
     res.end();
   }
 });
