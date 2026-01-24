@@ -1709,6 +1709,12 @@
             let analysisResult = null;
 
             // File Upload
+            dropZone.addEventListener('click', (e) => {
+                if (e.target !== fileRemove && !fileRemove.contains(e.target)) {
+                    fileInput.click();
+                }
+            });
+
             dropZone.addEventListener('dragover', (e) => {
                 e.preventDefault();
                 dropZone.classList.add('drag-over');
