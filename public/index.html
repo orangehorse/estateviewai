@@ -893,8 +893,8 @@
         .question-priority.low { color: var(--color-forest); }
 
         .state-analysis-card {
-            background: linear-gradient(135deg, var(--color-forest) 0%, var(--color-forest-light) 100%);
-            color: white;
+            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+            border: 2px solid var(--color-forest);
             border-radius: var(--radius-lg);
             padding: 1.5rem;
             margin-bottom: 1rem;
@@ -904,25 +904,34 @@
             font-size: 1.5rem;
             font-weight: 600;
             margin-bottom: 1rem;
+            color: var(--color-forest);
         }
         .state-pros-cons {
             display: grid;
             grid-template-columns: 1fr 1fr;
             gap: 1rem;
         }
-        .state-pros, .state-cons {
-            background: rgba(255,255,255,0.1);
+        .state-pros {
+            background: rgba(45, 106, 79, 0.1);
             padding: 1rem;
             border-radius: var(--radius-sm);
+            border-left: 4px solid var(--color-success);
+        }
+        .state-cons {
+            background: rgba(155, 34, 38, 0.1);
+            padding: 1rem;
+            border-radius: var(--radius-sm);
+            border-left: 4px solid var(--color-danger);
         }
         .state-section-title {
             font-weight: 600;
             margin-bottom: 0.5rem;
             font-size: 0.9rem;
+            color: var(--color-ink);
         }
         .state-list {
             font-size: 0.85rem;
-            opacity: 0.9;
+            color: var(--color-ink-light);
         }
         .state-list li { margin: 4px 0; }
 
@@ -1136,27 +1145,6 @@
                         <path d="M6 18L18 6M6 6l12 12"/>
                     </svg>
                 </button>
-            </div>
-
-            <div class="format-selection">
-                <label class="format-label">Document Format:</label>
-                <div class="format-options">
-                    <label class="format-option selected" data-format="pdf">
-                        <input type="radio" name="format" value="pdf" checked>
-                        <span class="format-check"></span>
-                        <span>PDF</span>
-                    </label>
-                    <label class="format-option" data-format="docx">
-                        <input type="radio" name="format" value="docx">
-                        <span class="format-check"></span>
-                        <span>Word (DOCX)</span>
-                    </label>
-                    <label class="format-option" data-format="txt">
-                        <input type="radio" name="format" value="txt">
-                        <span class="format-check"></span>
-                        <span>Plain Text</span>
-                    </label>
-                </div>
             </div>
 
             <div class="considerations-section">
@@ -1709,17 +1697,15 @@
             const fileName = document.getElementById('fileName');
             const fileSize = document.getElementById('fileSize');
             const fileRemove = document.getElementById('fileRemove');
-            const formatOptions = document.querySelectorAll('.format-option');
+            const resultsSection = document.getElementById('resultsSection');
+            const downloadBtn = document.getElementById('downloadBtn');
             const considerations = document.getElementById('considerations');
             const analyzeBtn = document.getElementById('analyzeBtn');
             const progressSection = document.getElementById('progressSection');
             const errorMessage = document.getElementById('errorMessage');
             const errorText = document.getElementById('errorText');
-            const resultsSection = document.getElementById('resultsSection');
-            const downloadBtn = document.getElementById('downloadBtn');
 
             let selectedFile = null;
-            let selectedFormat = 'pdf';
             let analysisResult = null;
 
             // File Upload
@@ -1779,25 +1765,20 @@
                 return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
             }
 
-            // Format Selection
-            formatOptions.forEach(opt => {
-                opt.addEventListener('click', () => setFormat(opt.dataset.format));
-            });
-
-            function setFormat(format) {
-                selectedFormat = format;
-                formatOptions.forEach(opt => {
-                    opt.classList.toggle('selected', opt.dataset.format === format);
-                    opt.querySelector('input').checked = opt.dataset.format === format;
-                });
-            }
-
             // Collapsible Sections
             document.querySelectorAll('.report-header').forEach(header => {
                 header.addEventListener('click', () => {
                     header.parentElement.classList.toggle('expanded');
                 });
             });
+
+            // Auto-detect format from file extension
+            function detectFormat(filename) {
+                const ext = filename.split('.').pop().toLowerCase();
+                if (ext === 'pdf') return 'pdf';
+                if (ext === 'docx' || ext === 'doc') return 'docx';
+                return 'txt';
+            }
 
             // Analysis
             analyzeBtn.addEventListener('click', startAnalysis);
@@ -1816,9 +1797,10 @@
                 document.getElementById('step1').classList.add('active');
 
                 try {
-                    // Step 1: Extract text
+                    // Step 1: Extract text (auto-detect format)
                     updateProgress(1);
-                    const extractedText = await extractDocumentText(selectedFile, selectedFormat);
+                    const detectedFormat = detectFormat(selectedFile.name);
+                    const extractedText = await extractDocumentText(selectedFile, detectedFormat);
 
                     if (!extractedText || extractedText.trim().length < 100) {
                         throw new Error('Could not extract sufficient text from the document.');
@@ -2519,227 +2501,437 @@
                     const pageWidth = doc.internal.pageSize.getWidth();
                     const pageHeight = doc.internal.pageSize.getHeight();
                     const margin = 20;
+                    const contentWidth = pageWidth - 2 * margin;
                     let y = margin;
 
-                    // Header
-                    doc.setFillColor(26, 26, 46);
-                    doc.rect(0, 0, pageWidth, 35, 'F');
-                    doc.setTextColor(255, 255, 255);
-                    doc.setFontSize(24);
-                    doc.setFont('helvetica', 'bold');
-                    doc.text('EstateView AI', margin, 20);
-                    doc.setFontSize(10);
-                    doc.setFont('helvetica', 'normal');
-                    doc.text('Trust Document Analysis Report', margin, 28);
-                    
-                    y = 50;
-                    doc.setTextColor(26, 26, 46);
+                    // Helper functions
+                    const checkPage = (needed = 20) => {
+                        if (y + needed > pageHeight - 25) {
+                            doc.addPage();
+                            y = margin;
+                            return true;
+                        }
+                        return false;
+                    };
 
-                    // Trust Name & Score
-                    doc.setFontSize(18);
+                    const addSectionHeader = (title, color = [26, 26, 46]) => {
+                        checkPage(25);
+                        doc.setFillColor(...color);
+                        doc.rect(margin, y, contentWidth, 8, 'F');
+                        doc.setTextColor(255, 255, 255);
+                        doc.setFontSize(11);
+                        doc.setFont('helvetica', 'bold');
+                        doc.text(title.toUpperCase(), margin + 3, y + 5.5);
+                        doc.setTextColor(26, 26, 46);
+                        y += 12;
+                    };
+
+                    const addSubheader = (title) => {
+                        checkPage(15);
+                        doc.setFontSize(10);
+                        doc.setFont('helvetica', 'bold');
+                        doc.setTextColor(114, 47, 55);
+                        doc.text(title, margin, y);
+                        doc.setTextColor(26, 26, 46);
+                        y += 6;
+                    };
+
+                    const addParagraph = (text, indent = 0) => {
+                        if (!text) return;
+                        doc.setFontSize(9);
+                        doc.setFont('helvetica', 'normal');
+                        const cleanText = String(text).replace(/<[^>]*>/g, '');
+                        const lines = doc.splitTextToSize(cleanText, contentWidth - indent);
+                        for (const line of lines) {
+                            checkPage(6);
+                            doc.text(line, margin + indent, y);
+                            y += 4.5;
+                        }
+                    };
+
+                    const addBullet = (text, indent = 5) => {
+                        if (!text) return;
+                        doc.setFontSize(9);
+                        doc.setFont('helvetica', 'normal');
+                        const cleanText = String(text).replace(/<[^>]*>/g, '');
+                        const lines = doc.splitTextToSize(cleanText, contentWidth - indent - 3);
+                        checkPage(6);
+                        doc.text('•', margin + indent, y);
+                        for (let i = 0; i < lines.length; i++) {
+                            if (i > 0) checkPage(5);
+                            doc.text(lines[i], margin + indent + 4, y);
+                            y += 4.5;
+                        }
+                    };
+
+                    const ds = analysisResult.documentSummary || {};
+
+                    // ===== COVER PAGE =====
+                    doc.setFillColor(26, 26, 46);
+                    doc.rect(0, 0, pageWidth, 60, 'F');
+                    doc.setTextColor(255, 255, 255);
+                    doc.setFontSize(28);
+                    doc.setFont('helvetica', 'bold');
+                    doc.text('EstateView AI', margin, 30);
+                    doc.setFontSize(14);
+                    doc.setFont('helvetica', 'normal');
+                    doc.text('Comprehensive Trust Document Analysis', margin, 42);
+                    
+                    y = 80;
+                    doc.setTextColor(26, 26, 46);
+                    doc.setFontSize(20);
                     doc.setFont('helvetica', 'bold');
                     doc.text(analysisResult.trustName || 'Trust Document', margin, y);
-                    y += 10;
+                    y += 15;
 
-                    doc.setFontSize(12);
+                    // Score display
+                    doc.setFillColor(245, 245, 245);
+                    doc.roundedRect(margin, y, 60, 30, 3, 3, 'F');
+                    doc.setFontSize(24);
+                    doc.setFont('helvetica', 'bold');
+                    doc.setTextColor(114, 47, 55);
+                    doc.text(`${analysisResult.overallScore}`, margin + 15, y + 18);
+                    doc.setFontSize(10);
+                    doc.text('/100', margin + 38, y + 18);
+                    doc.setFontSize(8);
+                    doc.setTextColor(100, 100, 100);
+                    doc.text('OVERALL SCORE', margin + 8, y + 26);
+
+                    doc.setFontSize(14);
+                    doc.setTextColor(26, 26, 46);
+                    doc.text(getGrade(analysisResult.overallScore), margin + 70, y + 15);
+                    doc.setFontSize(9);
+                    doc.setTextColor(100, 100, 100);
+                    doc.text('Grade', margin + 70, y + 22);
+
+                    y += 45;
+
+                    // Document info
+                    doc.setFontSize(10);
+                    doc.setTextColor(26, 26, 46);
                     doc.setFont('helvetica', 'normal');
-                    doc.text(`Overall Score: ${analysisResult.overallScore}/100 (${getGrade(analysisResult.overallScore)})`, margin, y);
-                    y += 10;
+                    if (analysisResult.trustType) {
+                        doc.text(`Trust Type: ${analysisResult.trustType}`, margin, y); y += 6;
+                    }
+                    if (analysisResult.governingLaw) {
+                        doc.text(`Governing Law: ${analysisResult.governingLaw}`, margin, y); y += 6;
+                    }
+                    if (analysisResult.executionDate) {
+                        doc.text(`Execution Date: ${analysisResult.executionDate}`, margin, y); y += 6;
+                    }
                     doc.text(`Analysis Date: ${new Date().toLocaleDateString()}`, margin, y);
                     y += 15;
 
-                    // Executive Summary
-                    doc.setFontSize(14);
-                    doc.setFont('helvetica', 'bold');
-                    doc.text('Executive Summary', margin, y);
-                    y += 8;
-                    
-                    doc.setFontSize(10);
-                    doc.setFont('helvetica', 'normal');
-                    const summary = analysisResult.executiveSummary || 'No summary available.';
-                    const summaryLines = doc.splitTextToSize(summary.replace(/<[^>]*>/g, ''), pageWidth - 2 * margin);
-                    
-                    for (const line of summaryLines) {
-                        if (y > pageHeight - margin) {
-                            doc.addPage();
-                            y = margin;
-                        }
-                        doc.text(line, margin, y);
+                    // Key Takeaways on cover
+                    if (analysisResult.keyTakeaways?.length) {
+                        addSubheader('Key Takeaways');
+                        analysisResult.keyTakeaways.forEach(t => addBullet(t));
                         y += 5;
                     }
-                    y += 10;
 
-                    // Category Scores
-                    if (y > pageHeight - 60) {
-                        doc.addPage();
-                        y = margin;
-                    }
-                    doc.setFontSize(14);
-                    doc.setFont('helvetica', 'bold');
-                    doc.text('Category Scores', margin, y);
+                    // ===== EXECUTIVE SUMMARY =====
+                    doc.addPage();
+                    y = margin;
+                    addSectionHeader('Executive Summary');
+                    addParagraph(analysisResult.executiveSummary);
                     y += 8;
 
-                    doc.setFontSize(10);
-                    doc.setFont('helvetica', 'normal');
-                    if (analysisResult.categoryScores) {
-                        for (const [cat, score] of Object.entries(analysisResult.categoryScores)) {
-                            if (y > pageHeight - margin) {
-                                doc.addPage();
-                                y = margin;
+                    // ===== KEY PARTIES & FIDUCIARIES =====
+                    addSectionHeader('Key Parties & Fiduciaries', [45, 74, 62]);
+                    
+                    if (ds.grantor?.name) {
+                        addSubheader('Grantor / Settlor');
+                        addParagraph(ds.grantor.name);
+                        y += 3;
+                    }
+
+                    if (ds.trustees?.initial?.length) {
+                        addSubheader('Initial Trustee(s)');
+                        ds.trustees.initial.forEach(t => {
+                            addBullet(`${t.name} (${t.role || 'Trustee'})${t.powers ? ' — ' + t.powers : ''}`);
+                        });
+                        y += 3;
+                    }
+
+                    if (ds.trustees?.successors?.length) {
+                        addSubheader('Successor Trustees');
+                        ds.trustees.successors.forEach((t, i) => {
+                            addBullet(`${i + 1}. ${t.name}${t.condition ? ' — ' + t.condition : ''}`);
+                        });
+                        y += 3;
+                    }
+
+                    if (ds.trustProtectors?.designated?.length) {
+                        addSubheader('Trust Protector(s)');
+                        ds.trustProtectors.designated.forEach(tp => {
+                            addBullet(tp.name);
+                            if (tp.powers?.length) {
+                                tp.powers.slice(0, 3).forEach(p => addParagraph(`   - ${p}`, 8));
                             }
-                            doc.text(`${cat}: ${score}%`, margin, y);
+                        });
+                        y += 3;
+                    }
+
+                    if (ds.beneficiaries?.primary?.length) {
+                        addSubheader('Primary Beneficiaries');
+                        ds.beneficiaries.primary.forEach(b => {
+                            addBullet(`${b.name}${b.relationship ? ' (' + b.relationship + ')' : ''}${b.share ? ' — ' + b.share : ''}`);
+                        });
+                    }
+                    y += 5;
+
+                    // ===== DEATH EVENT TIMELINE =====
+                    if (ds.deathEventTimeline?.length) {
+                        addSectionHeader('Death Event Timeline', [114, 47, 55]);
+                        ds.deathEventTimeline.forEach((event, i) => {
+                            checkPage(20);
+                            doc.setFontSize(10);
+                            doc.setFont('helvetica', 'bold');
+                            doc.text(`Step ${event.order || i + 1}: ${event.event}`, margin, y);
+                            y += 5;
+                            doc.setFont('helvetica', 'normal');
+                            doc.setFontSize(9);
+                            if (event.timing) { addParagraph(`Timing: ${event.timing}`, 5); }
+                            if (event.responsibleParty) { addParagraph(`Responsible: ${event.responsibleParty}`, 5); }
+                            if (event.details) { addParagraph(event.details, 5); }
+                            y += 3;
+                        });
+                    }
+
+                    // ===== CATEGORY SCORES =====
+                    addSectionHeader('Category Scores');
+                    if (analysisResult.categoryScores) {
+                        const scores = Object.entries(analysisResult.categoryScores);
+                        scores.forEach(([cat, score]) => {
+                            checkPage(8);
+                            doc.setFontSize(9);
+                            doc.setFont('helvetica', 'normal');
+                            doc.text(cat, margin, y);
+                            // Draw score bar
+                            const barWidth = 40;
+                            const barX = pageWidth - margin - barWidth - 15;
+                            doc.setFillColor(230, 230, 230);
+                            doc.rect(barX, y - 3, barWidth, 4, 'F');
+                            const fillColor = score >= 80 ? [45, 106, 79] : score >= 60 ? [184, 134, 11] : [155, 34, 38];
+                            doc.setFillColor(...fillColor);
+                            doc.rect(barX, y - 3, (barWidth * score / 100), 4, 'F');
+                            doc.text(`${score}%`, pageWidth - margin - 12, y);
+                            y += 7;
+                        });
+                    }
+                    y += 5;
+
+                    // ===== QUESTIONS FOR YOUR ATTORNEY =====
+                    if (analysisResult.questionsForAttorney?.length) {
+                        addSectionHeader('Questions for Your Attorney', [114, 47, 55]);
+                        analysisResult.questionsForAttorney.forEach((q, i) => {
+                            checkPage(15);
+                            doc.setFontSize(9);
+                            doc.setFont('helvetica', 'bold');
+                            addParagraph(`${i + 1}. ${q.question}`);
+                            doc.setFont('helvetica', 'normal');
+                            if (q.context) addParagraph(q.context, 5);
+                            y += 2;
+                        });
+                    }
+
+                    // ===== STATE-SPECIFIC ANALYSIS =====
+                    if (analysisResult.stateSpecificAnalysis) {
+                        const state = analysisResult.stateSpecificAnalysis;
+                        addSectionHeader(`State-Specific Analysis: ${state.governingState || analysisResult.governingLaw || 'N/A'}`, [45, 74, 62]);
+                        
+                        if (state.advantages?.length) {
+                            addSubheader('Advantages');
+                            state.advantages.forEach(a => addBullet(a));
+                        }
+                        if (state.concerns?.length) {
+                            addSubheader('Concerns');
+                            state.concerns.forEach(c => addBullet(c));
+                        }
+                        if (state.alternativeJurisdictions?.length) {
+                            addSubheader('Alternative Jurisdictions to Consider');
+                            state.alternativeJurisdictions.forEach(j => addBullet(j));
+                        }
+                        y += 5;
+                    }
+
+                    // ===== DOCUMENT AGE ANALYSIS =====
+                    if (analysisResult.documentAgeAnalysis) {
+                        const age = analysisResult.documentAgeAnalysis;
+                        addSectionHeader('Document Age & Law Changes', [184, 134, 11]);
+                        
+                        doc.setFontSize(10);
+                        doc.setFont('helvetica', 'bold');
+                        if (age.ageInYears !== null) {
+                            doc.text(`Document Age: ${age.ageInYears} years (Executed: ${age.executionDate || 'Unknown'})`, margin, y);
                             y += 6;
                         }
-                    }
-                    y += 10;
-
-                    // Recommendations
-                    if (y > pageHeight - 40) {
-                        doc.addPage();
-                        y = margin;
-                    }
-                    doc.setFontSize(14);
-                    doc.setFont('helvetica', 'bold');
-                    doc.text('Recommendations', margin, y);
-                    y += 8;
-
-                    doc.setFontSize(10);
-                    doc.setFont('helvetica', 'normal');
-                    const recs = analysisResult.recommendations || [];
-                    recs.forEach((rec, i) => {
-                        if (y > pageHeight - margin) {
-                            doc.addPage();
-                            y = margin;
-                        }
-                        const title = typeof rec === 'string' ? rec : (rec.title || rec.action || '');
-                        const text = `${i + 1}. ${title}`;
-                        const lines = doc.splitTextToSize(text, pageWidth - 2 * margin);
-                        for (const line of lines) {
-                            doc.text(line, margin, y);
-                            y += 5;
-                        }
-                        y += 3;
-                    });
-
-                    // Key Parties
-                    const ds = analysisResult.documentSummary || {};
-                    if (ds.grantor || ds.trustees || ds.beneficiaries) {
-                        if (y > pageHeight - 60) { doc.addPage(); y = margin; }
-                        doc.setFontSize(14);
-                        doc.setFont('helvetica', 'bold');
-                        doc.text('Key Parties & Fiduciaries', margin, y);
+                        doc.text(`Update Urgency: ${(age.updateUrgency || 'routine').toUpperCase()}`, margin, y);
                         y += 8;
+
+                        if (age.missedLawChanges?.length) {
+                            addSubheader('Tax Law Changes Since Execution');
+                            age.missedLawChanges.forEach(lc => {
+                                addBullet(`${lc.year}: ${lc.event}`);
+                            });
+                        }
+
+                        if (age.specificUpdatesNeeded?.length) {
+                            addSubheader('Specific Updates Needed');
+                            age.specificUpdatesNeeded.forEach(u => addBullet(u));
+                        }
+                        y += 5;
+                    }
+
+                    // ===== TAX EFFICIENCY OPPORTUNITIES =====
+                    if (analysisResult.taxEfficiencyOpportunities?.length) {
+                        addSectionHeader('Tax Efficiency Opportunities', [45, 106, 79]);
+                        analysisResult.taxEfficiencyOpportunities.forEach(opp => {
+                            checkPage(15);
+                            doc.setFontSize(9);
+                            doc.setFont('helvetica', 'bold');
+                            addParagraph(opp.opportunity);
+                            doc.setFont('helvetica', 'normal');
+                            if (opp.benefit) addParagraph(`Benefit: ${opp.benefit}`, 5);
+                            if (opp.implementation) addParagraph(`Implementation: ${opp.implementation}`, 5);
+                            y += 3;
+                        });
+                    }
+
+                    // ===== COORDINATION CHECKLIST =====
+                    if (analysisResult.coordinationChecklist?.length) {
+                        addSectionHeader('Coordination Checklist', [45, 74, 62]);
+                        addParagraph('Items to verify outside this trust document:');
+                        y += 3;
+                        analysisResult.coordinationChecklist.forEach(item => {
+                            addBullet(`${item.item}${item.action ? ' — ' + item.action : ''}`);
+                        });
+                        y += 5;
+                    }
+
+                    // ===== ACTION PRIORITIZATION MATRIX =====
+                    if (analysisResult.actionPrioritizationMatrix) {
+                        const matrix = analysisResult.actionPrioritizationMatrix;
+                        addSectionHeader('Action Prioritization Matrix', [114, 47, 55]);
+                        
+                        if (matrix.doNow?.length) {
+                            addSubheader('DO NOW (High Urgency, High Impact)');
+                            matrix.doNow.forEach(i => addBullet(`${i.item}: ${i.reason || ''}`));
+                        }
+                        if (matrix.planFor?.length) {
+                            addSubheader('PLAN FOR (Low Urgency, High Impact)');
+                            matrix.planFor.forEach(i => addBullet(`${i.item}: ${i.reason || ''}`));
+                        }
+                        if (matrix.quickWins?.length) {
+                            addSubheader('QUICK WINS (High Urgency, Low Impact)');
+                            matrix.quickWins.forEach(i => addBullet(`${i.item}: ${i.reason || ''}`));
+                        }
+                        y += 5;
+                    }
+
+                    // ===== RECOMMENDATIONS =====
+                    if (analysisResult.recommendations?.length) {
+                        addSectionHeader('Recommendations');
+                        analysisResult.recommendations.forEach((rec, i) => {
+                            checkPage(15);
+                            const title = typeof rec === 'string' ? rec : (rec.title || rec.action || '');
+                            const priority = rec.priority || '';
+                            doc.setFontSize(9);
+                            doc.setFont('helvetica', 'bold');
+                            addParagraph(`${i + 1}. ${title}${priority ? ' [' + priority.toUpperCase() + ']' : ''}`);
+                            doc.setFont('helvetica', 'normal');
+                            if (rec.action && rec.action !== title) addParagraph(rec.action, 5);
+                            if (rec.issue) addParagraph(`Issue: ${rec.issue}`, 5);
+                            y += 2;
+                        });
+                    }
+
+                    // ===== POTENTIAL ISSUES =====
+                    if (ds.potentialIssues?.length) {
+                        addSectionHeader('Potential Issues Requiring Review', [155, 34, 38]);
+                        ds.potentialIssues.forEach(issue => {
+                            checkPage(20);
+                            doc.setFontSize(9);
+                            doc.setFont('helvetica', 'bold');
+                            const sevColor = issue.severity === 'critical' ? [155, 34, 38] : 
+                                            issue.severity === 'important' ? [184, 134, 11] : [100, 100, 100];
+                            doc.setTextColor(...sevColor);
+                            addParagraph(`[${(issue.severity || 'MINOR').toUpperCase()}] ${issue.issue}`);
+                            doc.setTextColor(26, 26, 46);
+                            doc.setFont('helvetica', 'normal');
+                            if (issue.explanation) addParagraph(issue.explanation, 5);
+                            if (issue.recommendation) addParagraph(`Recommendation: ${issue.recommendation}`, 5);
+                            y += 3;
+                        });
+                    }
+
+                    // ===== FAMILY DYNAMICS =====
+                    if (analysisResult.familyDynamicsAnalysis) {
+                        const family = analysisResult.familyDynamicsAnalysis;
+                        addSectionHeader('Family Dynamics Analysis', [184, 134, 11]);
+                        
                         doc.setFontSize(10);
+                        doc.setFont('helvetica', 'bold');
+                        doc.text(`Overall Conflict Risk: ${(family.overallRisk || 'Unknown').toUpperCase()}`, margin, y);
+                        y += 8;
                         doc.setFont('helvetica', 'normal');
 
-                        if (ds.grantor?.name) {
-                            doc.text(`Grantor: ${ds.grantor.name}`, margin, y);
-                            y += 6;
+                        if (family.potentialConflictAreas?.length) {
+                            addSubheader('Potential Conflict Areas');
+                            family.potentialConflictAreas.forEach(a => addBullet(a));
                         }
-                        if (ds.trustees?.initial?.length) {
-                            doc.setFont('helvetica', 'bold');
-                            doc.text('Initial Trustee(s):', margin, y);
-                            y += 5;
-                            doc.setFont('helvetica', 'normal');
-                            ds.trustees.initial.forEach(t => {
-                                if (y > pageHeight - margin) { doc.addPage(); y = margin; }
-                                doc.text(`  • ${t.name} (${t.role || 'Trustee'})`, margin, y);
-                                y += 5;
-                            });
+                        if (family.protectiveProvisions?.length) {
+                            addSubheader('Protective Provisions in Place');
+                            family.protectiveProvisions.forEach(p => addBullet(p));
                         }
-                        if (ds.trustees?.successors?.length) {
-                            doc.setFont('helvetica', 'bold');
-                            doc.text('Successor Trustees:', margin, y);
-                            y += 5;
-                            doc.setFont('helvetica', 'normal');
-                            ds.trustees.successors.forEach((t, i) => {
-                                if (y > pageHeight - margin) { doc.addPage(); y = margin; }
-                                doc.text(`  ${i + 1}. ${t.name}`, margin, y);
-                                y += 5;
-                            });
+                        if (family.missingProtections?.length) {
+                            addSubheader('Missing Protections to Consider');
+                            family.missingProtections.forEach(p => addBullet(p));
                         }
-                        if (ds.beneficiaries?.primary?.length) {
-                            doc.setFont('helvetica', 'bold');
-                            doc.text('Primary Beneficiaries:', margin, y);
-                            y += 5;
-                            doc.setFont('helvetica', 'normal');
-                            ds.beneficiaries.primary.forEach(b => {
-                                if (y > pageHeight - margin) { doc.addPage(); y = margin; }
-                                doc.text(`  • ${b.name}${b.share ? ' - ' + b.share : ''}`, margin, y);
-                                y += 5;
-                            });
-                        }
-                        y += 5;
                     }
 
-                    // Death Event Timeline
-                    if (ds.deathEventTimeline?.length) {
-                        if (y > pageHeight - 60) { doc.addPage(); y = margin; }
-                        doc.setFontSize(14);
-                        doc.setFont('helvetica', 'bold');
-                        doc.text('Death Event Timeline', margin, y);
-                        y += 8;
-                        doc.setFontSize(10);
-
-                        ds.deathEventTimeline.forEach((event, i) => {
-                            if (y > pageHeight - 20) { doc.addPage(); y = margin; }
-                            doc.setFont('helvetica', 'bold');
-                            const eventTitle = `Step ${event.order || i + 1}: ${event.event}`;
-                            const titleLines = doc.splitTextToSize(eventTitle, pageWidth - 2 * margin);
-                            titleLines.forEach(line => { doc.text(line, margin, y); y += 5; });
-                            doc.setFont('helvetica', 'normal');
-                            if (event.timing) { doc.text(`  Timing: ${event.timing}`, margin, y); y += 5; }
-                            if (event.responsibleParty) { doc.text(`  Responsible: ${event.responsibleParty}`, margin, y); y += 5; }
-                            y += 3;
-                        });
-                        y += 5;
+                    // ===== COMPARISON NOTES =====
+                    if (analysisResult.comparisonNotes) {
+                        const comp = analysisResult.comparisonNotes;
+                        addSectionHeader('Comparison vs. Typical Trusts', [45, 106, 79]);
+                        
+                        if (comp.strengthsVsTypical?.length) {
+                            addSubheader('Strengths');
+                            comp.strengthsVsTypical.forEach(s => addBullet(s));
+                        }
+                        if (comp.weaknessesVsTypical?.length) {
+                            addSubheader('Weaknesses');
+                            comp.weaknessesVsTypical.forEach(w => addBullet(w));
+                        }
+                        if (comp.unusualFeatures?.length) {
+                            addSubheader('Unusual Features');
+                            comp.unusualFeatures.forEach(f => addBullet(f));
+                        }
                     }
 
-                    // Potential Issues
-                    if (ds.potentialIssues?.length) {
-                        if (y > pageHeight - 60) { doc.addPage(); y = margin; }
-                        doc.setFontSize(14);
-                        doc.setFont('helvetica', 'bold');
-                        doc.text('Potential Issues Requiring Review', margin, y);
-                        y += 8;
-                        doc.setFontSize(10);
-
-                        ds.potentialIssues.forEach(issue => {
-                            if (y > pageHeight - 25) { doc.addPage(); y = margin; }
-                            doc.setFont('helvetica', 'bold');
-                            const issueTitle = `[${(issue.severity || 'MINOR').toUpperCase()}] ${issue.issue}`;
-                            const titleLines = doc.splitTextToSize(issueTitle, pageWidth - 2 * margin);
-                            titleLines.forEach(line => { doc.text(line, margin, y); y += 5; });
-                            doc.setFont('helvetica', 'normal');
-                            if (issue.explanation) {
-                                const expLines = doc.splitTextToSize(issue.explanation, pageWidth - 2 * margin - 5);
-                                expLines.forEach(line => { 
-                                    if (y > pageHeight - margin) { doc.addPage(); y = margin; }
-                                    doc.text(line, margin + 5, y); y += 5; 
-                                });
-                            }
-                            if (issue.recommendation) {
-                                const recLines = doc.splitTextToSize(`Recommendation: ${issue.recommendation}`, pageWidth - 2 * margin - 5);
-                                recLines.forEach(line => { 
-                                    if (y > pageHeight - margin) { doc.addPage(); y = margin; }
-                                    doc.text(line, margin + 5, y); y += 5; 
-                                });
-                            }
-                            y += 3;
-                        });
-                    }
-
-                    // Footer on all pages
+                    // ===== FOOTER ON ALL PAGES =====
                     const totalPages = doc.internal.getNumberOfPages();
                     for (let i = 1; i <= totalPages; i++) {
                         doc.setPage(i);
-                        doc.setFontSize(8);
+                        // Footer line
+                        doc.setDrawColor(200, 200, 200);
+                        doc.line(margin, pageHeight - 15, pageWidth - margin, pageHeight - 15);
+                        // Footer text
+                        doc.setFontSize(7);
                         doc.setTextColor(128, 128, 128);
-                        doc.text('EstateView AI - For informational purposes only. Not legal advice.', margin, pageHeight - 10);
-                        doc.text(`Page ${i} of ${totalPages}`, pageWidth - margin - 25, pageHeight - 10);
+                        doc.setFont('helvetica', 'normal');
+                        doc.text('EstateView AI — For informational purposes only. This analysis does not constitute legal advice.', margin, pageHeight - 10);
+                        doc.text(`Page ${i} of ${totalPages}`, pageWidth - margin - 20, pageHeight - 10);
+                        // Header on pages after first
+                        if (i > 1) {
+                            doc.setFontSize(8);
+                            doc.setTextColor(128, 128, 128);
+                            doc.text(analysisResult.trustName || 'Trust Analysis', margin, 10);
+                            doc.text('EstateView AI', pageWidth - margin - 25, 10);
+                        }
                     }
 
-                    doc.save(`Trust_Analysis_${new Date().toISOString().split('T')[0]}.pdf`);
+                    doc.save(`Trust_Analysis_${(analysisResult.trustName || 'Document').replace(/[^a-zA-Z0-9]/g, '_')}_${new Date().toISOString().split('T')[0]}.pdf`);
 
                 } catch (error) {
                     console.error('PDF generation error:', error);
