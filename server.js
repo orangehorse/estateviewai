@@ -149,6 +149,120 @@ const ATTRIBUTES = [
   {id:110,name:"Integration clause",imp:7,cat:"Technical Drafting & Legal Compliance"}
 ];
 
+// User-friendly names for attributes (simplified for non-attorneys)
+const FRIENDLY_NAMES = {
+  1: "Spendthrift Protection",
+  2: "Trustee Discretion Standards",
+  3: "Asset Protection Provisions",
+  4: "Anti-Alienation Safeguards",
+  5: "Creditor Exception Rules",
+  6: "Self-Funded Trust Rules",
+  7: "Fraudulent Transfer Protection",
+  8: "Charging Order Provisions",
+  9: "Divorce Protection",
+  10: "Bankruptcy Safeguards",
+  11: "Generation-Skipping Tax Planning",
+  12: "Estate Tax Clarity",
+  13: "Grantor Trust Status",
+  14: "Asset Substitution Rights",
+  15: "Gift Tax Annual Exclusion (Crummey)",
+  16: "Hanging Power Provisions",
+  17: "Formula Funding Clauses",
+  18: "Marital Deduction (QTIP) Provisions",
+  19: "Portability Planning",
+  20: "Stepped-Up Basis Optimization",
+  21: "Delaware Tax Trap Provisions",
+  22: "Charitable Remainder Provisions",
+  23: "Private Foundation Coordination",
+  24: "State Income Tax Planning",
+  25: "Section 678 Powers",
+  26: "Primary Beneficiary Designations",
+  27: "Backup Beneficiary Chain",
+  28: "Distribution Method (Per Stirpes)",
+  29: "Age-Based Distribution Schedule",
+  30: "Incentive Provisions",
+  31: "Disincentive Provisions",
+  32: "Adopted Children Provisions",
+  33: "Posthumous Children Provisions",
+  34: "Omitted Heir Provisions",
+  35: "Class Gift Rules",
+  36: "Generation-Skipping Options",
+  37: "Ultimate Distribution Plan",
+  38: "Specific Bequests",
+  39: "Residuary Distribution",
+  40: "Survivorship Requirements",
+  41: "Initial Trustee Named",
+  42: "Successor Trustee Chain",
+  43: "Co-Trustee Provisions",
+  44: "Corporate Trustee Rules",
+  45: "Trustee Removal Process",
+  46: "Trustee Resignation Process",
+  47: "Trust Protector Designation",
+  48: "Trust Protector Powers",
+  49: "Distribution Committee",
+  50: "Investment Committee",
+  51: "Trustee Compensation",
+  52: "Bond Waiver",
+  53: "Trustee Liability Standards",
+  54: "Indemnification Provisions",
+  55: "Conflict of Interest Rules",
+  56: "Amendment/Revocation Powers",
+  57: "Decanting Authority",
+  58: "Trust Protector Modification Powers",
+  59: "Change of Trust Location",
+  60: "Trust Merger/Consolidation",
+  61: "Trust Division/Severance",
+  62: "Non-Judicial Settlement",
+  63: "Virtual Representation",
+  64: "Tax Law Change Provisions",
+  65: "Cy Pres / Deviation Clause",
+  66: "Special Needs Provisions",
+  67: "Substance Abuse Provisions",
+  68: "Mental Incapacity Provisions",
+  69: "Marital Property Protection",
+  70: "Prenuptial Coordination",
+  71: "Beneficiary Privacy",
+  72: "Education Funding",
+  73: "Healthcare Funding",
+  74: "Business Succession",
+  75: "Primary Residence Provisions",
+  76: "Investment Powers",
+  77: "Asset Retention Powers",
+  78: "Real Estate Powers",
+  79: "Business Entity Powers",
+  80: "Borrowing Powers",
+  81: "Lending Powers",
+  82: "Agent Employment Powers",
+  83: "Tax Election Powers",
+  84: "Digital Asset Powers",
+  85: "Life Insurance Powers",
+  86: "Tangible Property Management",
+  87: "Environmental Liability",
+  88: "Pour-Over Will Coordination",
+  89: "Beneficiary Designation Sync",
+  90: "Power of Attorney Coordination",
+  91: "Business Entity Coordination",
+  92: "Prenuptial Agreement Sync",
+  93: "Community Property Provisions",
+  94: "Homestead Protection",
+  95: "Personal Property Memorandum",
+  96: "Charitable Remainder Trust",
+  97: "Charitable Lead Provisions",
+  98: "Private Foundation Planning",
+  99: "Donor Advised Fund Provisions",
+  100: "Charitable Distribution Authority",
+  101: "Proper Execution",
+  102: "Clear Definitions",
+  103: "Consistent Terminology",
+  104: "Unambiguous Language",
+  105: "Administrative Provisions",
+  106: "Perpetuities Savings Clause",
+  107: "Dispute Resolution (Arbitration)",
+  108: "No-Contest Clause",
+  109: "Professional Formatting",
+  110: "Integration Clause"
+};
+
 // State-specific trust law considerations
 const STATE_SPECIFIC_RULES = {
   "Florida": ["Unique homestead protections - cannot be devised if survived by spouse or minor child", "No state income tax on trusts", "Does not recognize self-settled asset protection trusts", "Specific elective share rules", "Pretermitted spouse/child statutes"],
@@ -198,6 +312,23 @@ const TAX_LAW_MILESTONES = [
   { year: 2023, event: "SECURE 2.0 - Additional retirement account changes" },
   { year: 2026, event: "TCJA sunset - Exemption scheduled to return to ~$6-7M (inflation adjusted)" }
 ];
+
+// Helper function to generate user-friendly status explanations
+function getStatusExplanation(status, score) {
+  if (score >= 8) {
+    return "Well-drafted and comprehensive";
+  } else if (score >= 6) {
+    return "Present and adequately addressed";
+  } else if (score >= 4) {
+    return "Present but could be strengthened";
+  } else if (score >= 2) {
+    return "Mentioned but needs improvement";
+  } else {
+    if (status === 'ABSENT') return "Not addressed in document";
+    if (status === 'INFERRED') return "May be implied but not explicit";
+    return "Missing or inadequate";
+  }
+}
 
 // Analysis endpoint
 app.post('/api/analyze', async (req, res) => {
@@ -525,7 +656,18 @@ Be thorough, specific, and actionable. Prioritize practical guidance over genera
       // Core analysis
       detailedFindings: report.detailedFindings || evalData.criticalIssues,
       recommendations: report.recommendations,
-      attributeScores: evalData.attributeScores,
+      // Enrich attribute scores with friendly names and categories
+      attributeScores: (evalData.attributeScores || []).map(attr => {
+        const attrDef = ATTRIBUTES.find(a => a.id === attr.id);
+        return {
+          ...attr,
+          name: attrDef?.name || `Attribute ${attr.id}`,
+          friendlyName: FRIENDLY_NAMES[attr.id] || attrDef?.name || `Attribute ${attr.id}`,
+          category: attrDef?.cat || 'Other',
+          importance: attrDef?.imp || 5,
+          explanation: attr.notes || getStatusExplanation(attr.status, attr.score)
+        };
+      }),
       
       // Enhanced document summary
       documentSummary: documentSummary,
