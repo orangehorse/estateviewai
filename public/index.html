@@ -740,6 +740,23 @@
         padding: 1rem;
         background: var(--color-parchment);
         border-radius: var(--radius-sm);
+        cursor: pointer;
+        transition: all var(--transition-fast);
+    }
+
+    .category-score-item:hover {
+        background: rgba(184, 134, 11, 0.08);
+    }
+
+    .category-score-item.expanded {
+        background: var(--color-white);
+        box-shadow: var(--shadow-soft);
+    }
+
+    .category-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
     }
 
     .category-name {
@@ -747,6 +764,19 @@
         margin-bottom: 0.5rem;
         display: flex;
         justify-content: space-between;
+        flex: 1;
+    }
+
+    .category-toggle {
+        width: 20px;
+        height: 20px;
+        margin-left: 0.5rem;
+        transition: transform var(--transition-fast);
+        color: var(--color-ink-muted);
+    }
+
+    .category-score-item.expanded .category-toggle {
+        transform: rotate(180deg);
     }
 
     .category-score-value {
@@ -766,6 +796,85 @@
         background: linear-gradient(90deg, var(--color-gold) 0%, var(--color-gold-light) 100%);
         border-radius: 4px;
         transition: width 1s ease-out;
+    }
+
+    .category-attributes {
+        display: none;
+        margin-top: 1rem;
+        padding-top: 1rem;
+        border-top: 1px solid var(--color-parchment-dark);
+    }
+
+    .category-score-item.expanded .category-attributes {
+        display: block;
+    }
+
+    .attribute-item {
+        display: flex;
+        align-items: flex-start;
+        padding: 0.6rem 0;
+        border-bottom: 1px solid rgba(0,0,0,0.05);
+    }
+
+    .attribute-item:last-child {
+        border-bottom: none;
+    }
+
+    .attribute-status {
+        width: 24px;
+        height: 24px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 0.8rem;
+        font-weight: 600;
+        flex-shrink: 0;
+        margin-right: 0.75rem;
+    }
+
+    .attribute-status.good {
+        background: rgba(45, 106, 79, 0.15);
+        color: var(--color-success);
+    }
+
+    .attribute-status.fair {
+        background: rgba(184, 134, 11, 0.15);
+        color: var(--color-warning);
+    }
+
+    .attribute-status.poor {
+        background: rgba(155, 34, 38, 0.15);
+        color: var(--color-danger);
+    }
+
+    .attribute-details {
+        flex: 1;
+    }
+
+    .attribute-name {
+        font-weight: 500;
+        font-size: 0.9rem;
+        color: var(--color-ink);
+        margin-bottom: 0.15rem;
+    }
+
+    .attribute-explanation {
+        font-size: 0.8rem;
+        color: var(--color-ink-light);
+        line-height: 1.4;
+    }
+
+    .category-expand-hint {
+        font-size: 0.75rem;
+        color: var(--color-ink-muted);
+        margin-top: 0.5rem;
+        text-align: center;
+        opacity: 0.7;
+    }
+
+    .category-score-item.expanded .category-expand-hint {
+        display: none;
     }
 
     .issue-item {
@@ -1233,7 +1342,7 @@
             </li>
             <li class="progress-step" id="step3">
                 <span class="step-indicator">3</span>
-                <span class="step-text">Evaluating against 110 trust attributes</span>
+                <span class="step-text">Evaluating against over 100 standard best practices</span>
             </li>
             <li class="progress-step" id="step4">
                 <span class="step-indicator">4</span>
@@ -2195,22 +2304,88 @@
             }
             document.getElementById('potentialIssuesContent').innerHTML = issuesHTML;
 
-            // Category Scores
+            // Category Scores with expandable attribute details
             const catContent = document.getElementById('categoryScoresContent');
             catContent.innerHTML = '';
             if (result.categoryScores) {
+                // Get attribute scores grouped by category
+                const attributesByCategory = {};
+                if (result.attributeScores) {
+                    result.attributeScores.forEach(attr => {
+                        const cat = attr.category || 'Other';
+                        if (!attributesByCategory[cat]) {
+                            attributesByCategory[cat] = [];
+                        }
+                        attributesByCategory[cat].push(attr);
+                    });
+                }
+
                 Object.entries(result.categoryScores).forEach(([category, score]) => {
                     const item = document.createElement('div');
                     item.className = 'category-score-item';
+                    
+                    // Get attributes for this category
+                    const attrs = attributesByCategory[category] || [];
+                    const hasAttributes = attrs.length > 0;
+                    
+                    // Build attributes HTML
+                    let attributesHTML = '';
+                    if (hasAttributes) {
+                        attrs.forEach(attr => {
+                            const attrScore = attr.score || 0;
+                            let statusClass, statusIcon, explanation;
+                            
+                            if (attrScore >= 70) {
+                                statusClass = 'good';
+                                statusIcon = '✓';
+                                explanation = attr.explanation || 'Present and well-drafted';
+                            } else if (attrScore >= 40) {
+                                statusClass = 'fair';
+                                statusIcon = '⚠';
+                                explanation = attr.explanation || 'Present but could be strengthened';
+                            } else {
+                                statusClass = 'poor';
+                                statusIcon = '✗';
+                                explanation = attr.explanation || 'Missing or inadequate';
+                            }
+                            
+                            // Create user-friendly name
+                            const friendlyName = attr.friendlyName || attr.name || 'Provision';
+                            
+                            attributesHTML += `
+                                <div class="attribute-item">
+                                    <div class="attribute-status ${statusClass}">${statusIcon}</div>
+                                    <div class="attribute-details">
+                                        <div class="attribute-name">${friendlyName}</div>
+                                        <div class="attribute-explanation">${explanation}</div>
+                                    </div>
+                                </div>
+                            `;
+                        });
+                    }
+                    
                     item.innerHTML = `
-                        <div class="category-name">
-                            <span>${category}</span>
-                            <span class="category-score-value">${score}%</span>
+                        <div class="category-header">
+                            <div class="category-name">
+                                <span>${category}</span>
+                                <span class="category-score-value">${score}%</span>
+                            </div>
+                            ${hasAttributes ? `<svg class="category-toggle" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 9l-7 7-7-7"/></svg>` : ''}
                         </div>
                         <div class="category-bar">
                             <div class="category-bar-fill" style="width: 0%"></div>
                         </div>
+                        ${hasAttributes ? `<div class="category-expand-hint">Click to see details</div>` : ''}
+                        ${hasAttributes ? `<div class="category-attributes">${attributesHTML}</div>` : ''}
                     `;
+                    
+                    // Add click handler for expansion
+                    if (hasAttributes) {
+                        item.addEventListener('click', () => {
+                            item.classList.toggle('expanded');
+                        });
+                    }
+                    
                     catContent.appendChild(item);
                     setTimeout(() => {
                         item.querySelector('.category-bar-fill').style.width = `${score}%`;
