@@ -552,4 +552,10 @@ Be thorough, specific, and actionable. Prioritize practical guidance over genera
 
 app.get('/health', (_, res) => res.json({ status: 'ok' }));
 
-app.listen(process.env.PORT || 3000, () => console.log('EstateView AI running'));
+// Explicit root route fallback
+app.get('/', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
+
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, '0.0.0.0', () => console.log(`EstateView AI running on port ${PORT}`));
