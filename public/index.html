@@ -571,7 +571,9 @@
     .download-section {
         display: flex;
         justify-content: flex-end;
+        gap: 1rem;
         margin-bottom: 2rem;
+        flex-wrap: wrap;
     }
 
     .download-button {
@@ -593,6 +595,22 @@
     .download-button:hover {
         background: var(--color-ink);
         color: var(--color-white);
+    }
+
+    .download-button.docx-button {
+        background: var(--color-white);
+        color: var(--color-burgundy);
+        border-color: var(--color-burgundy);
+    }
+
+    .download-button.docx-button:hover {
+        background: var(--color-burgundy);
+        color: var(--color-white);
+    }
+
+    .download-button:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
     }
 
     .download-button svg {
@@ -1056,7 +1074,7 @@
 
     .key-takeaways {
         background: linear-gradient(135deg, var(--color-ink) 0%, #2a2a4e 100%);
-        color: white;
+        color: #ffffff;
         border-radius: var(--radius-md);
         padding: 1.5rem;
         margin: 1rem 0;
@@ -1065,9 +1083,15 @@
         color: var(--color-gold-light);
         margin-bottom: 1rem;
     }
+    .key-takeaways ul {
+        color: #ffffff;
+        margin: 0;
+        padding-left: 1.5rem;
+    }
     .key-takeaways li {
         margin: 0.5rem 0;
         padding-left: 0.5rem;
+        color: #ffffff;
     }
 
     @media (max-width: 768px) {
@@ -1248,6 +1272,16 @@
                     <path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
                 </svg>
                 Download PDF Report
+            </button>
+            <button class="download-button docx-button" id="downloadDocxBtn">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/>
+                    <polyline points="14,2 14,8 20,8"/>
+                    <line x1="16" y1="13" x2="8" y2="13"/>
+                    <line x1="16" y1="17" x2="8" y2="17"/>
+                    <polyline points="10,9 9,9 8,9"/>
+                </svg>
+                Download Redlined DOCX
             </button>
         </div>
 
@@ -1728,6 +1762,7 @@
 
         let selectedFile = null;
         let analysisResult = null;
+        let lastDocumentText = null;
 
         // Click on upload area opens file picker
         uploadArea.addEventListener('click', function(e) {
@@ -1841,6 +1876,9 @@
                 if (!extractedText || extractedText.trim().length < 100) {
                     throw new Error('Could not extract sufficient text from the document.');
                 }
+
+                // Store for DOCX generation
+                lastDocumentText = extractedText;
 
                 // Steps 2-5: API Analysis
                 updateProgress(2);
@@ -2519,6 +2557,68 @@
 
         // Download PDF
         downloadBtn.addEventListener('click', downloadPDF);
+
+        // Download DOCX with redlines
+        const downloadDocxBtn = document.getElementById('downloadDocxBtn');
+        downloadDocxBtn.addEventListener('click', downloadRedlinedDocx);
+
+        async function downloadRedlinedDocx() {
+            if (!analysisResult || !lastDocumentText) {
+                alert('Please analyze a document first.');
+                return;
+            }
+
+            downloadDocxBtn.disabled = true;
+            downloadDocxBtn.innerHTML = `
+                <svg class="spinning" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="animation: spin 1s linear infinite;">
+                    <path d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+                </svg>
+                Generating DOCX...
+            `;
+
+            try {
+                const response = await fetch('/api/generate-redline', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        documentText: lastDocumentText,
+                        analysisResult: analysisResult,
+                        documentName: analysisResult.trustName || 'Trust Document'
+                    })
+                });
+
+                if (!response.ok) {
+                    const err = await response.json();
+                    throw new Error(err.error || 'Failed to generate document');
+                }
+
+                const blob = await response.blob();
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `Trust_Revisions_${new Date().toISOString().split('T')[0]}.docx`;
+                document.body.appendChild(a);
+                a.click();
+                window.URL.revokeObjectURL(url);
+                a.remove();
+
+            } catch (error) {
+                console.error('DOCX generation error:', error);
+                alert('Failed to generate DOCX: ' + error.message);
+            } finally {
+                downloadDocxBtn.disabled = false;
+                downloadDocxBtn.innerHTML = `
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/>
+                        <polyline points="14,2 14,8 20,8"/>
+                        <line x1="16" y1="13" x2="8" y2="13"/>
+                        <line x1="16" y1="17" x2="8" y2="17"/>
+                        <polyline points="10,9 9,9 8,9"/>
+                    </svg>
+                    Download Redlined DOCX
+                `;
+            }
+        }
 
         async function downloadPDF() {
             if (!analysisResult) return;
