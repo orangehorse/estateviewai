@@ -2,6 +2,9 @@ import express from 'express';
 import { fileURLToPath } from 'url';
 import path from 'path';
 import Anthropic from '@anthropic-ai/sdk';
+import { Document, Packer, Paragraph, TextRun, HeadingLevel, AlignmentType, 
+         Table, TableRow, TableCell, BorderStyle, WidthType, ShadingType,
+         Header, Footer, PageNumber, PageBreak, InsertedTextRun, DeletedTextRun } from 'docx';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -551,6 +554,455 @@ Be thorough, specific, and actionable. Prioritize practical guidance over genera
 });
 
 app.get('/health', (_, res) => res.json({ status: 'ok' }));
+
+// Generate DOCX with redlines endpoint
+app.post('/api/generate-redline', async (req, res) => {
+  try {
+    const { documentText, analysisResult, documentName } = req.body;
+    
+    if (!documentText || !analysisResult) {
+      return res.status(400).json({ error: 'Missing required data' });
+    }
+
+    const apiKey = process.env.ANTHROPIC_API_KEY;
+    if (!apiKey) {
+      return res.status(500).json({ error: 'API key not configured' });
+    }
+
+    const anthropic = new Anthropic({ apiKey });
+
+    // Generate specific revision suggestions based on analysis
+    const revisionPrompt = await anthropic.messages.create({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 8192,
+      messages: [{
+        role: 'user',
+        content: `You are an expert trust and estate attorney reviewing a trust document. Based on the analysis results, generate specific, actionable revision suggestions.
+
+ORIGINAL DOCUMENT TEXT (first 50000 chars):
+${documentText.substring(0, 50000)}
+
+ANALYSIS RESULTS:
+${JSON.stringify(analysisResult, null, 2)}
+
+Generate a JSON array of specific revisions. Each revision should include:
+1. The exact original text to find (verbatim quote from document, 10-100 words)
+2. The suggested replacement text (professionally written in legal style matching the document)
+3. The type: "addition" (new clause/section), "modification" (change existing text), or "deletion" (remove text)
+4. A brief explanation of why this change is recommended
+5. Priority: "critical", "important", or "advisory"
+
+Focus on the most impactful changes based on:
+- Missing critical provisions identified in the analysis
+- Outdated language that needs updating
+- Unclear or ambiguous provisions
+- Tax efficiency improvements
+- Asset protection enhancements
+
+Return JSON format:
+{
+  "revisions": [
+    {
+      "originalText": "exact text from document to find",
+      "replacementText": "new text to replace it with",
+      "type": "modification|addition|deletion",
+      "explanation": "Why this change is recommended",
+      "priority": "critical|important|advisory",
+      "category": "Category this relates to"
+    }
+  ],
+  "newSections": [
+    {
+      "title": "Section Title",
+      "content": "Full text of new section to add",
+      "insertAfter": "Description of where to insert",
+      "explanation": "Why this section should be added",
+      "priority": "critical|important|advisory"
+    }
+  ]
+}
+
+Limit to 15-20 most important revisions. Write replacement text in professional legal style matching the original document's tone and formatting conventions.`
+      }]
+    });
+
+    let revisions = { revisions: [], newSections: [] };
+    try {
+      const match = revisionPrompt.content[0].text.match(/\{[\s\S]*\}/);
+      revisions = JSON.parse(match ? match[0] : '{}');
+    } catch (e) {
+      console.error('Failed to parse revisions:', e);
+    }
+
+    // Create the DOCX document with tracked changes
+    const doc = createRedlineDocument(documentText, revisions, analysisResult, documentName);
+    
+    const buffer = await Packer.toBuffer(doc);
+    
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+    res.setHeader('Content-Disposition', `attachment; filename="Trust_Revisions_${new Date().toISOString().split('T')[0]}.docx"`);
+    res.send(buffer);
+
+  } catch (error) {
+    console.error('DOCX generation error:', error);
+    res.status(500).json({ error: error.message || 'Failed to generate document' });
+  }
+});
+
+// Helper function to create redline document
+function createRedlineDocument(originalText, revisions, analysisResult, documentName) {
+  const date = new Date().toISOString();
+  const author = "EstateView AI";
+  
+  // Document styles
+  const styles = {
+    default: {
+      document: {
+        run: { font: "Times New Roman", size: 24 }
+      }
+    },
+    paragraphStyles: [
+      {
+        id: "Heading1",
+        name: "Heading 1",
+        basedOn: "Normal",
+        next: "Normal",
+        quickFormat: true,
+        run: { size: 28, bold: true, font: "Times New Roman" },
+        paragraph: { spacing: { before: 240, after: 120 } }
+      },
+      {
+        id: "Heading2",
+        name: "Heading 2",
+        basedOn: "Normal",
+        next: "Normal",
+        quickFormat: true,
+        run: { size: 26, bold: true, font: "Times New Roman" },
+        paragraph: { spacing: { before: 200, after: 100 } }
+      }
+    ]
+  };
+
+  const children = [];
+  
+  // Title page
+  children.push(
+    new Paragraph({
+      alignment: AlignmentType.CENTER,
+      spacing: { before: 400, after: 200 },
+      children: [
+        new TextRun({ text: "PROPOSED REVISIONS", bold: true, size: 36, font: "Times New Roman" })
+      ]
+    }),
+    new Paragraph({
+      alignment: AlignmentType.CENTER,
+      spacing: { after: 200 },
+      children: [
+        new TextRun({ text: documentName || "Trust Document", size: 28, font: "Times New Roman" })
+      ]
+    }),
+    new Paragraph({
+      alignment: AlignmentType.CENTER,
+      spacing: { after: 400 },
+      children: [
+        new TextRun({ text: `Prepared by EstateView AI — ${new Date().toLocaleDateString()}`, size: 22, italics: true, font: "Times New Roman" })
+      ]
+    }),
+    new Paragraph({
+      alignment: AlignmentType.CENTER,
+      spacing: { after: 200 },
+      children: [
+        new TextRun({ text: `Overall Document Score: ${analysisResult.overallScore}/100`, size: 24, font: "Times New Roman" })
+      ]
+    })
+  );
+
+  // Executive summary of changes
+  children.push(
+    new Paragraph({ children: [new PageBreak()] }),
+    new Paragraph({
+      heading: HeadingLevel.HEADING_1,
+      children: [new TextRun({ text: "SUMMARY OF PROPOSED REVISIONS", bold: true })]
+    }),
+    new Paragraph({
+      spacing: { after: 200 },
+      children: [
+        new TextRun({ 
+          text: "The following revisions are recommended based on a comprehensive analysis of the trust document. Changes are shown with tracked changes formatting: ",
+          size: 24
+        }),
+        new TextRun({ text: "additions appear underlined", underline: {}, size: 24 }),
+        new TextRun({ text: " and ", size: 24 }),
+        new TextRun({ text: "deletions appear with strikethrough", strike: true, size: 24 }),
+        new TextRun({ text: ".", size: 24 })
+      ]
+    })
+  );
+
+  // Summary table of revisions
+  const revisionsList = revisions.revisions || [];
+  const newSections = revisions.newSections || [];
+  
+  if (revisionsList.length > 0 || newSections.length > 0) {
+    const border = { style: BorderStyle.SINGLE, size: 1, color: "999999" };
+    const borders = { top: border, bottom: border, left: border, right: border };
+    
+    const tableRows = [
+      new TableRow({
+        children: [
+          new TableCell({
+            borders,
+            shading: { fill: "E8E8E8", type: ShadingType.CLEAR },
+            width: { size: 1500, type: WidthType.DXA },
+            children: [new Paragraph({ children: [new TextRun({ text: "Priority", bold: true, size: 20 })] })]
+          }),
+          new TableCell({
+            borders,
+            shading: { fill: "E8E8E8", type: ShadingType.CLEAR },
+            width: { size: 2000, type: WidthType.DXA },
+            children: [new Paragraph({ children: [new TextRun({ text: "Type", bold: true, size: 20 })] })]
+          }),
+          new TableCell({
+            borders,
+            shading: { fill: "E8E8E8", type: ShadingType.CLEAR },
+            width: { size: 5860, type: WidthType.DXA },
+            children: [new Paragraph({ children: [new TextRun({ text: "Description", bold: true, size: 20 })] })]
+          })
+        ]
+      })
+    ];
+
+    revisionsList.forEach((rev, i) => {
+      tableRows.push(new TableRow({
+        children: [
+          new TableCell({
+            borders,
+            width: { size: 1500, type: WidthType.DXA },
+            children: [new Paragraph({ children: [new TextRun({ text: (rev.priority || "advisory").toUpperCase(), size: 20 })] })]
+          }),
+          new TableCell({
+            borders,
+            width: { size: 2000, type: WidthType.DXA },
+            children: [new Paragraph({ children: [new TextRun({ text: rev.type || "modification", size: 20 })] })]
+          }),
+          new TableCell({
+            borders,
+            width: { size: 5860, type: WidthType.DXA },
+            children: [new Paragraph({ children: [new TextRun({ text: rev.explanation || "", size: 20 })] })]
+          })
+        ]
+      }));
+    });
+
+    newSections.forEach((sec) => {
+      tableRows.push(new TableRow({
+        children: [
+          new TableCell({
+            borders,
+            width: { size: 1500, type: WidthType.DXA },
+            children: [new Paragraph({ children: [new TextRun({ text: (sec.priority || "advisory").toUpperCase(), size: 20 })] })]
+          }),
+          new TableCell({
+            borders,
+            width: { size: 2000, type: WidthType.DXA },
+            children: [new Paragraph({ children: [new TextRun({ text: "NEW SECTION", size: 20 })] })]
+          }),
+          new TableCell({
+            borders,
+            width: { size: 5860, type: WidthType.DXA },
+            children: [new Paragraph({ children: [new TextRun({ text: sec.title + ": " + (sec.explanation || ""), size: 20 })] })]
+          })
+        ]
+      }));
+    });
+
+    children.push(
+      new Table({
+        width: { size: 100, type: WidthType.PERCENTAGE },
+        columnWidths: [1500, 2000, 5860],
+        rows: tableRows
+      })
+    );
+  }
+
+  // Detailed revisions section
+  children.push(
+    new Paragraph({ children: [new PageBreak()] }),
+    new Paragraph({
+      heading: HeadingLevel.HEADING_1,
+      children: [new TextRun({ text: "DETAILED PROPOSED REVISIONS", bold: true })]
+    })
+  );
+
+  // Add each revision with tracked changes
+  revisionsList.forEach((rev, index) => {
+    children.push(
+      new Paragraph({
+        spacing: { before: 300, after: 100 },
+        children: [
+          new TextRun({ text: `Revision ${index + 1}: `, bold: true, size: 24 }),
+          new TextRun({ text: `[${(rev.priority || "advisory").toUpperCase()}] `, bold: true, size: 24, 
+            color: rev.priority === "critical" ? "CC0000" : rev.priority === "important" ? "CC6600" : "666666" }),
+          new TextRun({ text: rev.category || "", italics: true, size: 24 })
+        ]
+      }),
+      new Paragraph({
+        spacing: { after: 100 },
+        children: [new TextRun({ text: rev.explanation || "", size: 22, italics: true })]
+      })
+    );
+
+    // Show the change with tracked changes formatting
+    if (rev.type === "deletion") {
+      children.push(
+        new Paragraph({
+          spacing: { after: 200 },
+          shading: { fill: "FFF5F5", type: ShadingType.CLEAR },
+          children: [
+            new TextRun({ text: "DELETE: ", bold: true, size: 22 }),
+            new TextRun({ text: rev.originalText || "", strike: true, size: 22, color: "CC0000" })
+          ]
+        })
+      );
+    } else if (rev.type === "addition") {
+      children.push(
+        new Paragraph({
+          spacing: { after: 200 },
+          shading: { fill: "F5FFF5", type: ShadingType.CLEAR },
+          children: [
+            new TextRun({ text: "ADD: ", bold: true, size: 22 }),
+            new TextRun({ text: rev.replacementText || "", underline: {}, size: 22, color: "006600" })
+          ]
+        })
+      );
+    } else {
+      // Modification - show both
+      children.push(
+        new Paragraph({
+          spacing: { after: 100 },
+          children: [new TextRun({ text: "ORIGINAL TEXT:", bold: true, size: 22 })]
+        }),
+        new Paragraph({
+          spacing: { after: 100 },
+          shading: { fill: "FFF5F5", type: ShadingType.CLEAR },
+          children: [new TextRun({ text: rev.originalText || "", strike: true, size: 22, color: "CC0000" })]
+        }),
+        new Paragraph({
+          spacing: { after: 100 },
+          children: [new TextRun({ text: "REVISED TEXT:", bold: true, size: 22 })]
+        }),
+        new Paragraph({
+          spacing: { after: 200 },
+          shading: { fill: "F5FFF5", type: ShadingType.CLEAR },
+          children: [new TextRun({ text: rev.replacementText || "", underline: {}, size: 22, color: "006600" })]
+        })
+      );
+    }
+  });
+
+  // New sections to add
+  if (newSections.length > 0) {
+    children.push(
+      new Paragraph({ children: [new PageBreak()] }),
+      new Paragraph({
+        heading: HeadingLevel.HEADING_1,
+        children: [new TextRun({ text: "RECOMMENDED NEW PROVISIONS", bold: true })]
+      }),
+      new Paragraph({
+        spacing: { after: 200 },
+        children: [new TextRun({ 
+          text: "The following provisions are recommended to be added to the trust document:", 
+          size: 24, italics: true 
+        })]
+      })
+    );
+
+    newSections.forEach((sec, index) => {
+      children.push(
+        new Paragraph({
+          spacing: { before: 300, after: 100 },
+          children: [
+            new TextRun({ text: `New Provision ${index + 1}: `, bold: true, size: 24 }),
+            new TextRun({ text: sec.title || "", bold: true, size: 24 })
+          ]
+        }),
+        new Paragraph({
+          spacing: { after: 100 },
+          children: [
+            new TextRun({ text: `[${(sec.priority || "advisory").toUpperCase()}] `, bold: true, size: 22,
+              color: sec.priority === "critical" ? "CC0000" : sec.priority === "important" ? "CC6600" : "666666" }),
+            new TextRun({ text: sec.explanation || "", italics: true, size: 22 })
+          ]
+        }),
+        new Paragraph({
+          spacing: { after: 100 },
+          children: [new TextRun({ text: `Insert after: ${sec.insertAfter || "appropriate location"}`, size: 20, italics: true })]
+        }),
+        new Paragraph({
+          spacing: { after: 200 },
+          shading: { fill: "F5FFF5", type: ShadingType.CLEAR },
+          border: { left: { style: BorderStyle.SINGLE, size: 12, color: "006600" } },
+          children: [new TextRun({ text: sec.content || "", size: 22 })]
+        })
+      );
+    });
+  }
+
+  // Disclaimer
+  children.push(
+    new Paragraph({ children: [new PageBreak()] }),
+    new Paragraph({
+      spacing: { before: 200, after: 200 },
+      children: [new TextRun({ text: "IMPORTANT DISCLAIMER", bold: true, size: 24 })]
+    }),
+    new Paragraph({
+      spacing: { after: 200 },
+      children: [new TextRun({ 
+        text: "This document contains suggested revisions generated by EstateView AI for informational purposes only. These suggestions do not constitute legal advice. Before implementing any changes to your trust document, you should consult with a qualified estate planning attorney who can review your specific circumstances and ensure compliance with applicable state and federal laws.",
+        size: 22
+      })]
+    }),
+    new Paragraph({
+      children: [new TextRun({ 
+        text: `Document generated: ${new Date().toLocaleString()}`,
+        size: 20, italics: true
+      })]
+    })
+  );
+
+  return new Document({
+    styles,
+    sections: [{
+      properties: {
+        page: {
+          size: { width: 12240, height: 15840 },
+          margin: { top: 1440, right: 1440, bottom: 1440, left: 1440 }
+        }
+      },
+      headers: {
+        default: new Header({
+          children: [new Paragraph({
+            alignment: AlignmentType.RIGHT,
+            children: [new TextRun({ text: "EstateView AI — Proposed Revisions", size: 18, italics: true, color: "666666" })]
+          })]
+        })
+      },
+      footers: {
+        default: new Footer({
+          children: [new Paragraph({
+            alignment: AlignmentType.CENTER,
+            children: [
+              new TextRun({ text: "Page ", size: 18 }),
+              new TextRun({ children: [PageNumber.CURRENT], size: 18 }),
+              new TextRun({ text: " — For informational purposes only. Not legal advice.", size: 18, color: "666666" })
+            ]
+          })]
+        })
+      },
+      children
+    }]
+  });
+}
 
 // Explicit root route fallback
 app.get('/', (req, res) => {
