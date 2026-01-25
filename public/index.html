@@ -368,6 +368,80 @@
         color: var(--color-ink-muted);
     }
 
+    /* Speech Input Button Styles */
+    .textarea-wrapper {
+        position: relative;
+        width: 100%;
+    }
+
+    .speech-input-btn {
+        position: absolute;
+        bottom: 12px;
+        right: 12px;
+        width: 36px;
+        height: 36px;
+        border: none;
+        border-radius: 50%;
+        background: var(--color-parchment);
+        color: var(--color-ink-muted);
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: all var(--transition-fast);
+        z-index: 1;
+    }
+
+    .speech-input-btn:hover {
+        background: var(--color-parchment-dark);
+        color: var(--color-ink-light);
+    }
+
+    .speech-input-btn.recording {
+        background: var(--color-danger);
+        color: var(--color-white);
+        animation: pulse-recording 1.5s ease-in-out infinite;
+    }
+
+    .speech-input-btn.recording:hover {
+        background: #b52a2e;
+        color: var(--color-white);
+    }
+
+    @keyframes pulse-recording {
+        0%, 100% {
+            box-shadow: 0 0 0 0 rgba(155, 34, 38, 0.4);
+        }
+        50% {
+            box-shadow: 0 0 0 8px rgba(155, 34, 38, 0);
+        }
+    }
+
+    .speech-input-btn svg {
+        width: 18px;
+        height: 18px;
+    }
+
+    .speech-input-btn:disabled {
+        opacity: 0.4;
+        cursor: not-allowed;
+    }
+
+    .speech-input-btn[title]:hover::after {
+        content: attr(title);
+        position: absolute;
+        bottom: 100%;
+        right: 0;
+        margin-bottom: 8px;
+        padding: 6px 10px;
+        background: var(--color-ink);
+        color: var(--color-white);
+        font-size: 0.75rem;
+        border-radius: var(--radius-sm);
+        white-space: nowrap;
+        pointer-events: none;
+    }
+
     .analyze-button {
         display: flex;
         align-items: center;
@@ -1267,11 +1341,21 @@
 
         <div class="considerations-section">
             <label class="considerations-label" for="considerations">Special Considerations (optional):</label>
-            <textarea 
-                class="considerations-textarea" 
-                id="considerations" 
-                placeholder="Enter any specific concerns, family circumstances, or areas you'd like the analysis to focus on. For example: 'Recently divorced beneficiary', 'Family business succession', 'Special needs child', 'Multi-state real estate holdings', etc."
-            ></textarea>
+            <div class="textarea-wrapper">
+                <textarea 
+                    class="considerations-textarea" 
+                    id="considerations" 
+                    placeholder="Enter any specific concerns, family circumstances, or areas you'd like the analysis to focus on. For example: 'Recently divorced beneficiary', 'Family business succession', 'Special needs child', 'Multi-state real estate holdings', etc."
+                ></textarea>
+                <button type="button" class="speech-input-btn" id="speechInputBtn" title="Click to speak">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+                        <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+                        <line x1="12" y1="19" x2="12" y2="23"/>
+                        <line x1="8" y1="23" x2="16" y2="23"/>
+                    </svg>
+                </button>
+            </div>
         </div>
 
         <button class="analyze-button" id="analyzeBtn" disabled>
@@ -1834,6 +1918,118 @@
         let selectedFile = null;
         let analysisResult = null;
         let lastDocumentText = null;
+
+        // ========== Speech Recognition Setup ==========
+        const speechInputBtn = document.getElementById('speechInputBtn');
+        let recognition = null;
+        let isRecording = false;
+
+        // Check for browser support and initialize speech recognition
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        
+        if (SpeechRecognition) {
+            recognition = new SpeechRecognition();
+            recognition.continuous = true;
+            recognition.interimResults = true;
+            recognition.lang = 'en-US';
+
+            let finalTranscript = '';
+            let silenceTimer = null;
+            const SILENCE_TIMEOUT = 2000; // Stop after 2 seconds of silence
+
+            recognition.onstart = function() {
+                isRecording = true;
+                speechInputBtn.classList.add('recording');
+                speechInputBtn.title = 'Click to stop';
+                finalTranscript = '';
+            };
+
+            recognition.onend = function() {
+                isRecording = false;
+                speechInputBtn.classList.remove('recording');
+                speechInputBtn.title = 'Click to speak';
+                clearTimeout(silenceTimer);
+            };
+
+            recognition.onresult = function(event) {
+                clearTimeout(silenceTimer);
+                
+                let interimTranscript = '';
+                
+                for (let i = event.resultIndex; i < event.results.length; i++) {
+                    const transcript = event.results[i][0].transcript;
+                    if (event.results[i].isFinal) {
+                        finalTranscript += transcript;
+                    } else {
+                        interimTranscript += transcript;
+                    }
+                }
+
+                // Append final transcript to textarea
+                if (finalTranscript) {
+                    const textarea = document.getElementById('considerations');
+                    const currentValue = textarea.value;
+                    const cursorPos = textarea.selectionStart;
+                    
+                    // Add space before new text if there's existing content and it doesn't end with space
+                    let separator = '';
+                    if (currentValue.length > 0 && !currentValue.endsWith(' ') && !currentValue.endsWith('\n')) {
+                        separator = ' ';
+                    }
+                    
+                    // Insert at cursor position or append at end
+                    if (cursorPos === currentValue.length || cursorPos === 0 && currentValue.length === 0) {
+                        textarea.value = currentValue + separator + finalTranscript;
+                    } else {
+                        textarea.value = currentValue.slice(0, cursorPos) + separator + finalTranscript + currentValue.slice(cursorPos);
+                    }
+                    
+                    finalTranscript = '';
+                    textarea.focus();
+                }
+
+                // Auto-stop after silence
+                silenceTimer = setTimeout(() => {
+                    if (isRecording) {
+                        recognition.stop();
+                    }
+                }, SILENCE_TIMEOUT);
+            };
+
+            recognition.onerror = function(event) {
+                console.error('Speech recognition error:', event.error);
+                isRecording = false;
+                speechInputBtn.classList.remove('recording');
+                speechInputBtn.title = 'Click to speak';
+                
+                if (event.error === 'not-allowed') {
+                    alert('Microphone access was denied. Please allow microphone access to use voice input.');
+                }
+            };
+
+            // Toggle recording on button click
+            speechInputBtn.addEventListener('click', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                
+                if (isRecording) {
+                    recognition.stop();
+                } else {
+                    try {
+                        recognition.start();
+                    } catch (err) {
+                        // Recognition may already be running
+                        console.log('Recognition error:', err);
+                    }
+                }
+            });
+        } else {
+            // Browser doesn't support speech recognition - hide the button
+            if (speechInputBtn) {
+                speechInputBtn.style.display = 'none';
+            }
+        }
+        // ========== End Speech Recognition Setup ==========
 
         // Get the Choose File button/label
         const chooseFileLabel = document.querySelector('label[for="fileInput"]');
