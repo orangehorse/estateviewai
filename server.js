@@ -728,6 +728,11 @@ Be thorough, specific, and actionable. Prioritize practical guidance over genera
 
 app.get('/health', (_, res) => res.json({ status: 'ok' }));
 
+// Privacy policy page (clean URL)
+app.get('/privacy', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'privacy.html'));
+});
+
 // Generate DOCX with redlines endpoint
 app.post('/api/generate-redline', async (req, res) => {
   try {
