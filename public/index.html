@@ -5,10 +5,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>EstateView AI | Trust Document Analysis</title>
-    <link rel="icon" type="image/x-icon" href="/favicon.ico">
-    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png">
-    <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png">
-    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;0,700;1,400&family=DM+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap" rel="stylesheet">
@@ -1818,13 +1814,6 @@
     // Configure PDF.js worker
     pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 
-    // Helper function to safely iterate arrays (handles undefined, null, strings, objects)
-    function safeArray(val) {
-        if (Array.isArray(val)) return val;
-        if (val && typeof val === 'string') return [val];
-        return [];
-    }
-
     // EstateView AI - Static Site Version
     document.addEventListener('DOMContentLoaded', () => {
         // Elements
@@ -2116,27 +2105,17 @@
             // Trustees
             if (ds.trustees) {
                 keyPartiesHTML += `<h4>Trustees</h4>`;
-                const initialTrustees = safeArray(ds.trustees.initial);
-                if (initialTrustees.length) {
+                if (ds.trustees.initial?.length) {
                     keyPartiesHTML += `<p><strong>Initial Trustee(s):</strong></p><ul>`;
-                    initialTrustees.forEach(t => {
-                        if (typeof t === 'string') {
-                            keyPartiesHTML += `<li><strong>${t}</strong></li>`;
-                        } else {
-                            keyPartiesHTML += `<li><strong>${t.name}</strong> (${t.role || 'Trustee'})${t.powers ? ' — ' + t.powers : ''}</li>`;
-                        }
+                    ds.trustees.initial.forEach(t => {
+                        keyPartiesHTML += `<li><strong>${t.name}</strong> (${t.role || 'Trustee'})${t.powers ? ' — ' + t.powers : ''}</li>`;
                     });
                     keyPartiesHTML += `</ul>`;
                 }
-                const successorTrustees = safeArray(ds.trustees.successors);
-                if (successorTrustees.length) {
+                if (ds.trustees.successors?.length) {
                     keyPartiesHTML += `<p><strong>Successor Trustees:</strong></p><ol>`;
-                    successorTrustees.forEach(t => {
-                        if (typeof t === 'string') {
-                            keyPartiesHTML += `<li>${t}</li>`;
-                        } else {
-                            keyPartiesHTML += `<li>${t.name}${t.condition ? ' — ' + t.condition : ''}</li>`;
-                        }
+                    ds.trustees.successors.forEach(t => {
+                        keyPartiesHTML += `<li>${t.name}${t.condition ? ' — ' + t.condition : ''}</li>`;
                     });
                     keyPartiesHTML += `</ol>`;
                 }
@@ -2148,70 +2127,45 @@
             // Trust Protectors
             if (ds.trustProtectors) {
                 keyPartiesHTML += `<h4>Trust Protector(s)</h4>`;
-                const designatedProtectors = safeArray(ds.trustProtectors.designated);
-                if (designatedProtectors.length) {
-                    designatedProtectors.forEach(tp => {
-                        if (typeof tp === 'string') {
-                            keyPartiesHTML += `<p><strong>${tp}</strong></p>`;
-                        } else {
-                            keyPartiesHTML += `<p><strong>${tp.name}</strong></p>`;
-                            const powers = safeArray(tp.powers);
-                            if (powers.length) {
-                                keyPartiesHTML += `<ul>`;
-                                powers.forEach(p => keyPartiesHTML += `<li>${p}</li>`);
-                                keyPartiesHTML += `</ul>`;
-                            }
+                if (ds.trustProtectors.designated?.length) {
+                    ds.trustProtectors.designated.forEach(tp => {
+                        keyPartiesHTML += `<p><strong>${tp.name}</strong></p>`;
+                        if (tp.powers?.length) {
+                            keyPartiesHTML += `<ul>`;
+                            tp.powers.forEach(p => keyPartiesHTML += `<li>${p}</li>`);
+                            keyPartiesHTML += `</ul>`;
                         }
                     });
+                } else if (ds.trustProtectors.powersInclude?.length) {
+                    keyPartiesHTML += `<p><strong>Powers Include:</strong></p><ul>`;
+                    ds.trustProtectors.powersInclude.forEach(p => keyPartiesHTML += `<li>${p}</li>`);
+                    keyPartiesHTML += `</ul>`;
                 } else {
-                    const powersInclude = safeArray(ds.trustProtectors.powersInclude);
-                    if (powersInclude.length) {
-                        keyPartiesHTML += `<p><strong>Powers Include:</strong></p><ul>`;
-                        powersInclude.forEach(p => keyPartiesHTML += `<li>${p}</li>`);
-                        keyPartiesHTML += `</ul>`;
-                    } else {
-                        keyPartiesHTML += `<p>No trust protector designated</p>`;
-                    }
-                }
+                    keyPartiesHTML += `<p>No trust protector designated</p>`;
                 }
             }
             
             // Beneficiaries
             if (ds.beneficiaries) {
                 keyPartiesHTML += `<h4>Beneficiaries</h4>`;
-                const primaryBeneficiaries = safeArray(ds.beneficiaries.primary);
-                if (primaryBeneficiaries.length) {
+                if (ds.beneficiaries.primary?.length) {
                     keyPartiesHTML += `<p><strong>Primary Beneficiaries:</strong></p><ul>`;
-                    primaryBeneficiaries.forEach(b => {
-                        if (typeof b === 'string') {
-                            keyPartiesHTML += `<li><strong>${b}</strong></li>`;
-                        } else {
-                            keyPartiesHTML += `<li><strong>${b.name}</strong>${b.relationship ? ' (' + b.relationship + ')' : ''}${b.share ? ' — ' + b.share : ''}</li>`;
-                        }
+                    ds.beneficiaries.primary.forEach(b => {
+                        keyPartiesHTML += `<li><strong>${b.name}</strong>${b.relationship ? ' (' + b.relationship + ')' : ''}${b.share ? ' — ' + b.share : ''}</li>`;
                     });
                     keyPartiesHTML += `</ul>`;
                 }
-                const contingentBeneficiaries = safeArray(ds.beneficiaries.contingent);
-                if (contingentBeneficiaries.length) {
+                if (ds.beneficiaries.contingent?.length) {
                     keyPartiesHTML += `<p><strong>Contingent Beneficiaries:</strong></p><ul>`;
-                    contingentBeneficiaries.forEach(b => {
-                        if (typeof b === 'string') {
-                            keyPartiesHTML += `<li>${b}</li>`;
-                        } else {
-                            keyPartiesHTML += `<li>${b.name}${b.condition ? ' — ' + b.condition : ''}</li>`;
-                        }
+                    ds.beneficiaries.contingent.forEach(b => {
+                        keyPartiesHTML += `<li>${b.name}${b.condition ? ' — ' + b.condition : ''}</li>`;
                     });
                     keyPartiesHTML += `</ul>`;
                 }
-                const remaindermen = safeArray(ds.beneficiaries.remaindermen);
-                if (remaindermen.length) {
+                if (ds.beneficiaries.remaindermen?.length) {
                     keyPartiesHTML += `<p><strong>Remaindermen:</strong></p><ul>`;
-                    remaindermen.forEach(b => {
-                        if (typeof b === 'string') {
-                            keyPartiesHTML += `<li>${b}</li>`;
-                        } else {
-                            keyPartiesHTML += `<li>${b.name}${b.condition ? ' — ' + b.condition : ''}</li>`;
-                        }
+                    ds.beneficiaries.remaindermen.forEach(b => {
+                        keyPartiesHTML += `<li>${b.name}${b.condition ? ' — ' + b.condition : ''}</li>`;
                     });
                     keyPartiesHTML += `</ul>`;
                 }
@@ -2987,14 +2941,10 @@
                     y += 3;
                 }
 
-                if (Array.isArray(ds.trustees?.successors) && ds.trustees.successors.length) {
+                if (ds.trustees?.successors?.length) {
                     addSubheader('Successor Trustees');
                     ds.trustees.successors.forEach((t, i) => {
-                        if (typeof t === 'string') {
-                            addBullet(`${i + 1}. ${t}`);
-                        } else {
-                            addBullet(`${i + 1}. ${t.name}${t.condition ? ' — ' + t.condition : ''}`);
-                        }
+                        addBullet(`${i + 1}. ${t.name}${t.condition ? ' — ' + t.condition : ''}`);
                     });
                     y += 3;
                 }
