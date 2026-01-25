@@ -45,7 +45,6 @@
             --transition-medium: 0.3s ease;
         }
 
-```
     *, *::before, *::after {
         box-sizing: border-box;
         margin: 0;
@@ -1222,7 +1221,6 @@
         .category-scores { grid-template-columns: 1fr; }
     }
 </style>
-```
 
 </head>
 <body>
@@ -1233,7 +1231,6 @@
         </div>
     </header>
 
-```
 <main class="container">
     <section class="upload-section" id="uploadSection">
         <h2 class="section-title">Upload Trust Document</h2>
@@ -1837,8 +1834,15 @@
         let analysisResult = null;
         let lastDocumentText = null;
 
-        // Click on upload area opens file picker
+        // Get the Choose File button/label
+        const chooseFileLabel = document.querySelector('label[for="fileInput"]');
+
+        // Click on upload area opens file picker (but not if clicking the label directly)
         uploadArea.addEventListener('click', function(e) {
+            // Don't trigger if the click was on the label (it handles itself via for="fileInput")
+            if (e.target === chooseFileLabel || chooseFileLabel.contains(e.target)) {
+                return;
+            }
             fileInput.click();
         });
 
