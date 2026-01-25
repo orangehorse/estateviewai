@@ -315,6 +315,9 @@ const TAX_LAW_MILESTONES = [
 
 // Helper function to generate user-friendly status explanations
 function getStatusExplanation(status, score) {
+  if (status === 'NOT_APPLICABLE') {
+    return "Not applicable to this trust";
+  }
   if (score >= 8) {
     return "Well-drafted and comprehensive";
   } else if (score >= 6) {
@@ -476,18 +479,24 @@ EVALUATION ATTRIBUTES (110 total):
 ${attrList}
 
 For each attribute, provide:
-1. Status: PRESENT (explicitly addressed), PARTIAL (mentioned but incomplete), ABSENT (not found), or INFERRED (implied but not explicit)
-2. Score: 0-10
+1. Status: PRESENT (explicitly addressed), PARTIAL (mentioned but incomplete), ABSENT (not found), INFERRED (implied but not explicit), or NOT_APPLICABLE (does not apply to this type of trust)
+2. Score: 0-10 (use null or -1 for NOT_APPLICABLE items)
 3. Confidence: HIGH (explicit language found), MEDIUM (inferred from context), LOW (uncertain)
 4. Location: Where in document this was found (if identifiable)
 5. Notes: Specific observations
+
+Important: Mark attributes as NOT_APPLICABLE when they genuinely don't apply to this trust type. For example:
+- Charitable provisions in a non-charitable trust
+- QTIP provisions in a trust without a surviving spouse beneficiary
+- Special needs provisions when no disabled beneficiaries exist
+- Business succession provisions when trust holds no business interests
 
 Return JSON:
 {
   "trustName": "...",
   "trustType": "...",
   "attributeScores": [
-    {"id": 1, "status": "PRESENT/PARTIAL/ABSENT/INFERRED", "score": 0-10, "confidence": "HIGH/MEDIUM/LOW", "location": "Section or page if known", "notes": "..."}
+    {"id": 1, "status": "PRESENT/PARTIAL/ABSENT/INFERRED/NOT_APPLICABLE", "score": 0-10, "confidence": "HIGH/MEDIUM/LOW", "location": "Section or page if known", "notes": "..."}
   ],
   "criticalIssues": [
     {"title": "...", "description": "...", "severity": "critical/important/minor", "confidence": "HIGH/MEDIUM/LOW", "affectedAttributes": [1,2,3]}
@@ -508,7 +517,7 @@ Return JSON:
     
     Object.keys(CATEGORIES).forEach(cat => {
       const attrs = ATTRIBUTES.filter(a => a.cat === cat);
-      const max = attrs.reduce((s, a) => s + a.imp, 0);
+      let max = 0;
       let actual = 0;
       let highConfCount = 0;
       let totalCount = 0;
@@ -516,15 +525,24 @@ Return JSON:
       attrs.forEach(a => {
         const e = evalData.attributeScores?.find(x => x.id === a.id);
         if (e) {
+          // Skip NOT_APPLICABLE items from scoring
+          if (e.status === 'NOT_APPLICABLE' || e.score === -1 || e.score === null) {
+            // Don't count this attribute in the score calculation
+            return;
+          }
+          max += a.imp;
           actual += (e.score / 10) * a.imp;
           if (e.confidence === 'HIGH') highConfCount++;
           totalCount++;
         } else {
+          // If no evaluation, include with 50% score
+          max += a.imp;
           actual += 0.5 * a.imp;
         }
       });
       
-      catScores[cat] = Math.round((actual / max) * 100);
+      // Avoid division by zero if all items are N/A
+      catScores[cat] = max > 0 ? Math.round((actual / max) * 100) : 0;
       confidenceByCategory[cat] = totalCount > 0 ? Math.round((highConfCount / totalCount) * 100) : 50;
     });
 
