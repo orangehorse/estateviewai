@@ -1,0 +1,519 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Privacy Policy | EstateView AI</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,600;0,700;1,400&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --color-ink: #1a1a2e;
+            --color-ink-light: #4a4a5e;
+            --color-ink-muted: #8a8a9e;
+            --color-parchment: #f5f3ef;
+            --color-parchment-dark: #e8e4dc;
+            --color-white: #ffffff;
+            --color-gold: #b8960b;
+            --color-gold-light: #d4af37;
+            --color-burgundy: #722f37;
+            --color-forest: #2d6a4f;
+            --color-danger: #9b2226;
+            --font-serif: 'Cormorant Garamond', Georgia, serif;
+            --font-body: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            --shadow-soft: 0 2px 8px rgba(26, 26, 46, 0.08);
+            --shadow-medium: 0 4px 16px rgba(26, 26, 46, 0.12);
+            --radius-sm: 6px;
+            --radius-md: 10px;
+            --radius-lg: 16px;
+            --transition-fast: 0.15s ease;
+        }
+
+        *, *::before, *::after {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        html {
+            font-size: 16px;
+            scroll-behavior: smooth;
+        }
+
+        body {
+            font-family: var(--font-body);
+            background: var(--color-parchment);
+            color: var(--color-ink);
+            line-height: 1.6;
+            min-height: 100vh;
+        }
+
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: 
+                linear-gradient(135deg, rgba(26, 26, 46, 0.02) 0%, transparent 50%),
+                linear-gradient(225deg, rgba(184, 150, 11, 0.02) 0%, transparent 50%);
+            pointer-events: none;
+            z-index: -1;
+        }
+
+        .header {
+            background: linear-gradient(135deg, var(--color-ink) 0%, #2a2a4e 100%);
+            color: var(--color-white);
+            padding: 2rem;
+            text-align: center;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .header::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M30 0L30 60M0 30L60 30' stroke='%23ffffff' stroke-width='0.5' opacity='0.03'/%3E%3C/svg%3E");
+            pointer-events: none;
+        }
+
+        .header-content {
+            position: relative;
+            z-index: 1;
+            max-width: 900px;
+            margin: 0 auto;
+        }
+
+        .logo {
+            font-family: var(--font-serif);
+            font-size: 2.5rem;
+            font-weight: 700;
+            margin-bottom: 0.5rem;
+            letter-spacing: -0.02em;
+        }
+
+        .logo span {
+            color: var(--color-gold);
+            font-style: italic;
+        }
+
+        .tagline {
+            font-size: 1.1rem;
+            opacity: 0.9;
+            font-weight: 400;
+        }
+
+        .nav-link {
+            display: inline-block;
+            margin-top: 1rem;
+            color: var(--color-gold-light);
+            text-decoration: none;
+            font-size: 0.9rem;
+            transition: color var(--transition-fast);
+        }
+
+        .nav-link:hover {
+            color: var(--color-white);
+        }
+
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 3rem 2rem;
+        }
+
+        .policy-section {
+            background: var(--color-white);
+            border-radius: var(--radius-lg);
+            box-shadow: var(--shadow-soft);
+            padding: 2.5rem;
+            margin-bottom: 2rem;
+            border: 1px solid rgba(26, 26, 46, 0.06);
+        }
+
+        .policy-title {
+            font-family: var(--font-serif);
+            font-size: 2rem;
+            font-weight: 700;
+            color: var(--color-ink);
+            margin-bottom: 0.5rem;
+        }
+
+        .policy-effective {
+            color: var(--color-ink-muted);
+            font-size: 0.9rem;
+            margin-bottom: 2rem;
+            padding-bottom: 1.5rem;
+            border-bottom: 1px solid var(--color-parchment-dark);
+        }
+
+        h2 {
+            font-family: var(--font-serif);
+            font-size: 1.5rem;
+            font-weight: 600;
+            color: var(--color-ink);
+            margin: 2rem 0 1rem 0;
+        }
+
+        h2:first-of-type {
+            margin-top: 0;
+        }
+
+        h3 {
+            font-size: 1.1rem;
+            font-weight: 600;
+            color: var(--color-ink);
+            margin: 1.5rem 0 0.75rem 0;
+        }
+
+        p {
+            margin-bottom: 1rem;
+            color: var(--color-ink-light);
+        }
+
+        ul, ol {
+            margin: 1rem 0 1rem 1.5rem;
+            color: var(--color-ink-light);
+        }
+
+        li {
+            margin-bottom: 0.5rem;
+        }
+
+        .highlight-box {
+            background: linear-gradient(135deg, var(--color-parchment) 0%, var(--color-parchment-dark) 100%);
+            border-left: 4px solid var(--color-gold);
+            padding: 1.25rem 1.5rem;
+            margin: 1.5rem 0;
+            border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+        }
+
+        .highlight-box p {
+            margin-bottom: 0;
+            color: var(--color-ink);
+        }
+
+        .highlight-box.important {
+            border-left-color: var(--color-burgundy);
+            background: linear-gradient(135deg, #fdf5f5 0%, #f9ebeb 100%);
+        }
+
+        .highlight-box.secure {
+            border-left-color: var(--color-forest);
+            background: linear-gradient(135deg, #f5faf7 0%, #ebf5ef 100%);
+        }
+
+        .architecture-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 1.5rem;
+            margin: 1.5rem 0;
+        }
+
+        .architecture-card {
+            background: var(--color-parchment);
+            border-radius: var(--radius-md);
+            padding: 1.5rem;
+            text-align: center;
+        }
+
+        .architecture-card h4 {
+            font-size: 1rem;
+            font-weight: 600;
+            color: var(--color-ink);
+            margin-bottom: 0.5rem;
+        }
+
+        .architecture-card p {
+            font-size: 0.9rem;
+            margin-bottom: 0;
+        }
+
+        .architecture-card .icon {
+            font-size: 2rem;
+            margin-bottom: 0.75rem;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 1.5rem 0;
+            font-size: 0.95rem;
+        }
+
+        th, td {
+            padding: 0.75rem 1rem;
+            text-align: left;
+            border-bottom: 1px solid var(--color-parchment-dark);
+        }
+
+        th {
+            background: var(--color-parchment);
+            font-weight: 600;
+            color: var(--color-ink);
+        }
+
+        td {
+            color: var(--color-ink-light);
+        }
+
+        .contact-section {
+            background: linear-gradient(135deg, var(--color-ink) 0%, #2a2a4e 100%);
+            color: var(--color-white);
+            border-radius: var(--radius-lg);
+            padding: 2rem;
+            text-align: center;
+            margin-top: 2rem;
+        }
+
+        .contact-section h2 {
+            color: var(--color-white);
+            margin-bottom: 1rem;
+        }
+
+        .contact-section p {
+            color: rgba(255, 255, 255, 0.9);
+        }
+
+        .contact-section a {
+            color: var(--color-gold-light);
+        }
+
+        .footer {
+            text-align: center;
+            padding: 2rem;
+            color: var(--color-ink-muted);
+            font-size: 0.9rem;
+        }
+
+        .footer a {
+            color: var(--color-gold);
+            text-decoration: none;
+        }
+
+        .footer a:hover {
+            text-decoration: underline;
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                padding: 1.5rem 1rem;
+            }
+
+            .policy-section {
+                padding: 1.5rem;
+            }
+
+            .policy-title {
+                font-size: 1.75rem;
+            }
+
+            h2 {
+                font-size: 1.3rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <header class="header">
+        <div class="header-content">
+            <h1 class="logo">Estate<span>View</span> AI</h1>
+            <p class="tagline">Privacy Policy</p>
+            <a href="/" class="nav-link">← Back to Application</a>
+        </div>
+    </header>
+
+    <main class="container">
+        <div class="policy-section">
+            <h1 class="policy-title">Privacy Policy</h1>
+            <p class="policy-effective">Effective Date: January 25, 2026 | Last Updated: January 25, 2026</p>
+
+            <div class="highlight-box">
+                <p><strong>Summary:</strong> EstateView AI processes your trust documents entirely in-memory during analysis. We do not store, retain, or have access to your uploaded documents after your browser session ends.</p>
+            </div>
+
+            <h2>1. Introduction</h2>
+            <p>EstateView AI ("we," "our," or "the Service") is a trust document analysis tool that helps users evaluate their estate planning documents. This Privacy Policy explains how we handle information when you use our Service.</p>
+            <p>We are committed to protecting your privacy and have designed our architecture to minimize data collection and retention.</p>
+
+            <h2>2. Our Technical Architecture</h2>
+            <p>Understanding how EstateView AI works is essential to understanding our privacy practices. Our Service operates on a minimal-footprint architecture:</p>
+
+            <div class="architecture-grid">
+                <div class="architecture-card">
+                    <div class="icon">📄</div>
+                    <h4>Your Browser</h4>
+                    <p>Document text extraction happens locally in your browser before any data is transmitted</p>
+                </div>
+                <div class="architecture-card">
+                    <div class="icon">🖥️</div>
+                    <h4>Render.com</h4>
+                    <p>Stateless application server that processes requests without persistent storage</p>
+                </div>
+                <div class="architecture-card">
+                    <div class="icon">🤖</div>
+                    <h4>Anthropic Claude API</h4>
+                    <p>AI analysis engine that processes document text and returns analysis results</p>
+                </div>
+                <div class="architecture-card">
+                    <div class="icon">💾</div>
+                    <h4>GitHub</h4>
+                    <p>Hosts only application source code — no user data is ever stored here</p>
+                </div>
+            </div>
+
+            <h2>3. Information We Process</h2>
+            
+            <h3>3.1 Document Content (Temporary Processing Only)</h3>
+            <p>When you upload a trust document for analysis:</p>
+            <ul>
+                <li>Your document is converted to text in your browser</li>
+                <li>The extracted text is transmitted to our server over an encrypted HTTPS connection</li>
+                <li>The text is sent to Anthropic's Claude API for analysis</li>
+                <li>Analysis results are returned to your browser</li>
+                <li><strong>No document content is stored</strong> on our servers or any persistent database</li>
+            </ul>
+
+            <div class="highlight-box secure">
+                <p><strong>Key Privacy Protection:</strong> Our server is stateless. When your analysis request completes, the document text exists only in your browser. We have no database, no file storage, and no mechanism to retain your documents.</p>
+            </div>
+
+            <h3>3.2 Technical Data</h3>
+            <p>Like most web services, our hosting provider (Render.com) automatically collects:</p>
+            <ul>
+                <li>IP addresses (for security and abuse prevention)</li>
+                <li>Browser type and version</li>
+                <li>Request timestamps</li>
+                <li>General usage metrics</li>
+            </ul>
+            <p>This technical data is managed by Render.com according to their privacy policy and is not combined with any document content.</p>
+
+            <h2>4. How Your Data Flows</h2>
+            
+            <table>
+                <tr>
+                    <th>Stage</th>
+                    <th>What Happens</th>
+                    <th>Data Retention</th>
+                </tr>
+                <tr>
+                    <td>Upload</td>
+                    <td>Document text extracted in your browser</td>
+                    <td>Browser memory only</td>
+                </tr>
+                <tr>
+                    <td>Transmission</td>
+                    <td>Text sent via encrypted HTTPS</td>
+                    <td>In-transit only</td>
+                </tr>
+                <tr>
+                    <td>Processing</td>
+                    <td>Server forwards to Claude API</td>
+                    <td>Server memory during request</td>
+                </tr>
+                <tr>
+                    <td>Analysis</td>
+                    <td>Claude analyzes and responds</td>
+                    <td>See Anthropic's policy</td>
+                </tr>
+                <tr>
+                    <td>Results</td>
+                    <td>Analysis returned to your browser</td>
+                    <td>Browser memory only</td>
+                </tr>
+                <tr>
+                    <td>Session End</td>
+                    <td>You close browser/tab</td>
+                    <td>All data cleared</td>
+                </tr>
+            </table>
+
+            <h2>5. Third-Party Services</h2>
+            
+            <h3>5.1 Anthropic (Claude API)</h3>
+            <p>Document text is sent to Anthropic's Claude API for analysis. Anthropic's handling of this data is governed by their policies:</p>
+            <ul>
+                <li>API inputs are not used to train Claude models</li>
+                <li>Anthropic may retain API logs for safety and abuse monitoring</li>
+                <li>Review Anthropic's privacy policy at <a href="https://www.anthropic.com/privacy" target="_blank">anthropic.com/privacy</a></li>
+            </ul>
+
+            <h3>5.2 Render.com (Hosting)</h3>
+            <p>Our application is hosted on Render.com. They provide the server infrastructure and may collect technical logs. Review their privacy policy at <a href="https://render.com/privacy" target="_blank">render.com/privacy</a></p>
+
+            <h3>5.3 GitHub (Source Code Only)</h3>
+            <p>Our application source code is hosted on GitHub. <strong>No user data is ever transmitted to or stored on GitHub.</strong> GitHub hosts only the application code itself.</p>
+
+            <h2>6. Data Security</h2>
+            
+            <div class="highlight-box secure">
+                <p><strong>Security Measures:</strong></p>
+            </div>
+            
+            <ul>
+                <li><strong>Encryption in Transit:</strong> All data transmission uses HTTPS/TLS encryption</li>
+                <li><strong>No Persistent Storage:</strong> We maintain no database of user documents or analysis results</li>
+                <li><strong>Stateless Architecture:</strong> Each request is independent; no session data persists on the server</li>
+                <li><strong>No User Accounts:</strong> We don't collect emails, passwords, or personal identifiers</li>
+                <li><strong>Client-Side Processing:</strong> Document parsing occurs in your browser when possible</li>
+            </ul>
+
+            <h2>7. What We Do NOT Do</h2>
+            <ul>
+                <li>We do <strong>not</strong> store your uploaded documents</li>
+                <li>We do <strong>not</strong> retain analysis results after your session</li>
+                <li>We do <strong>not</strong> create user accounts or profiles</li>
+                <li>We do <strong>not</strong> use cookies for tracking</li>
+                <li>We do <strong>not</strong> sell or share data with advertisers</li>
+                <li>We do <strong>not</strong> use your documents to train AI models</li>
+                <li>We do <strong>not</strong> have access to retrieve past analyses</li>
+            </ul>
+
+            <h2>8. Your Responsibilities</h2>
+            <p>Because we do not store your data, you are responsible for:</p>
+            <ul>
+                <li>Saving or printing any analysis results you wish to keep</li>
+                <li>Maintaining your own copies of uploaded documents</li>
+                <li>Ensuring you have authority to upload any documents you analyze</li>
+            </ul>
+
+            <div class="highlight-box important">
+                <p><strong>Important:</strong> Once you close your browser or navigate away, your analysis results cannot be recovered. Download any reports you need before ending your session.</p>
+            </div>
+
+            <h2>9. Legal Basis for Processing</h2>
+            <p>We process document data based on your explicit consent, provided when you voluntarily upload a document for analysis. You may withdraw this consent at any time by simply not using the Service.</p>
+
+            <h2>10. Children's Privacy</h2>
+            <p>EstateView AI is not intended for use by individuals under 18 years of age. We do not knowingly process information from children.</p>
+
+            <h2>11. International Users</h2>
+            <p>Our servers are located in the United States. If you access the Service from outside the US, your document text will be transmitted to and processed in the US. By using the Service, you consent to this transfer.</p>
+
+            <h2>12. Changes to This Policy</h2>
+            <p>We may update this Privacy Policy from time to time. Changes will be posted on this page with an updated "Last Updated" date. Continued use of the Service after changes constitutes acceptance of the revised policy.</p>
+
+            <h2>13. Contact Information</h2>
+            <p>For questions about this Privacy Policy or our privacy practices, please contact:</p>
+            <p><strong>EstateView AI</strong><br>
+            Email: privacy@estateviewai.com</p>
+        </div>
+
+        <div class="contact-section">
+            <h2>Questions About Your Privacy?</h2>
+            <p>We're committed to transparency. If you have any questions about how EstateView AI handles your data, please don't hesitate to reach out.</p>
+        </div>
+    </main>
+
+    <footer class="footer">
+        <p>EstateView AI — Trust Document Analysis Tool</p>
+        <p><a href="/">Return to Application</a> | Powered by Claude AI | For informational purposes only — not legal advice</p>
+    </footer>
+</body>
+</html>
