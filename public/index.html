@@ -821,6 +821,13 @@
         color: var(--color-danger);
     }
 
+    .attribute-status.na {
+        background: rgba(100, 100, 100, 0.15);
+        color: #666;
+        font-style: italic;
+        font-size: 0.85rem;
+    }
+
     .attribute-details {
         flex: 1;
     }
@@ -2300,22 +2307,32 @@
                     let attributesHTML = '';
                     if (hasAttributes) {
                         attrs.forEach(attr => {
-                            // Score is 0-10 from server, convert to percentage for comparison
-                            const attrScore = (attr.score || 0) * 10;
+                            // Check for NOT_APPLICABLE status first
+                            const isNA = attr.status === 'NOT_APPLICABLE' || attr.score === -1 || attr.score === null;
+                            
                             let statusClass, statusIcon, explanation;
                             
-                            if (attrScore >= 70) {
-                                statusClass = 'good';
-                                statusIcon = '✓';
-                                explanation = attr.explanation || 'Present and well-drafted';
-                            } else if (attrScore >= 40) {
-                                statusClass = 'fair';
-                                statusIcon = '⚠';
-                                explanation = attr.explanation || 'Present but could be strengthened';
+                            if (isNA) {
+                                statusClass = 'na';
+                                statusIcon = 'i';
+                                explanation = attr.explanation || 'Not applicable to this trust';
                             } else {
-                                statusClass = 'poor';
-                                statusIcon = '✗';
-                                explanation = attr.explanation || 'Missing or inadequate';
+                                // Score is 0-10 from server, convert to percentage for comparison
+                                const attrScore = (attr.score || 0) * 10;
+                                
+                                if (attrScore >= 70) {
+                                    statusClass = 'good';
+                                    statusIcon = '✓';
+                                    explanation = attr.explanation || 'Present and well-drafted';
+                                } else if (attrScore >= 40) {
+                                    statusClass = 'fair';
+                                    statusIcon = '⚠';
+                                    explanation = attr.explanation || 'Present but could be strengthened';
+                                } else {
+                                    statusClass = 'poor';
+                                    statusIcon = '✗';
+                                    explanation = attr.explanation || 'Missing or inadequate';
+                                }
                             }
                             
                             // Create user-friendly name
