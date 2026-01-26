@@ -1542,7 +1542,7 @@ Examples:
                 });
             }
 
-            async function processContent(options) {
+            async function processContent(options, clarificationResponses = null) {
                 // Show progress
                 progressSection.classList.add('visible');
                 resultsSection.classList.remove('visible');
@@ -1554,14 +1554,18 @@ Examples:
                 });
 
                 try {
-                    // Simulate processing steps (replace with actual API calls)
-                    await simulateStep('step1', 1500);
-                    await simulateStep('step2', 2000);
-                    await simulateStep('step3', 3000);
-                    await simulateStep('step4', 2000);
-                    await simulateStep('step5', 1500);
+                    // Step 1: Analyze content
+                    await simulateStep('step1', 1000);
+                    
+                    // Add clarification responses if provided
+                    if (clarificationResponses) {
+                        options.clarificationResponses = clarificationResponses;
+                        options.skipClarifications = false;
+                    }
 
-                    // Call the actual API
+                    // Step 2: Call analysis API
+                    await simulateStep('step2', 1500);
+                    
                     const response = await fetch('/api/dictation', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
@@ -1569,19 +1573,62 @@ Examples:
                     });
 
                     if (!response.ok) {
-                        throw new Error('Processing failed');
+                        const errorData = await response.json().catch(() => ({}));
+                        throw new Error(errorData.error || 'Processing failed');
                     }
 
                     const result = await response.json();
+                    
+                    // Check if clarifications are needed and we haven't already provided responses
+                    if (result.clarificationsNeeded && result.clarificationsNeeded.length > 0 && !clarificationResponses) {
+                        progressSection.classList.remove('visible');
+                        processBtn.disabled = false;
+                        showClarificationDialog(result.clarificationsNeeded, options);
+                        return;
+                    }
+
+                    // Step 3-5: Generate documents
+                    await simulateStep('step3', 2000);
+                    await simulateStep('step4', 1500);
+                    await simulateStep('step5', 1000);
+
                     displayResults(result);
 
                 } catch (error) {
                     console.error('Processing error:', error);
-                    alert('An error occurred while processing your content. Please try again.');
+                    alert(`An error occurred while processing your content: ${error.message}`);
                 } finally {
                     progressSection.classList.remove('visible');
                     processBtn.disabled = false;
                 }
+            }
+
+            function showClarificationDialog(clarifications, originalOptions) {
+                // Build the clarification questions HTML
+                const questionsHtml = clarifications.map((c, index) => `
+                    <div style="margin-bottom: 1.5rem; padding: 1rem; background: var(--color-parchment); border-radius: var(--radius-md); border-left: 3px solid ${c.critical ? 'var(--color-danger)' : 'var(--color-gold)'};">
+                        <div style="font-weight: 600; margin-bottom: 0.5rem; color: var(--color-ink);">
+                            ${c.critical ? '⚠️ ' : ''}Question ${index + 1}:
+                        </div>
+                        <div style="margin-bottom: 0.5rem;">${c.question}</div>
+                        ${c.context ? `<div style="font-size: 0.85rem; color: var(--color-ink-muted); font-style: italic;">${c.context}</div>` : ''}
+                    </div>
+                `).join('');
+
+                clarificationText.innerHTML = `
+                    <p style="margin-bottom: 1rem;">Before generating your documents, I need clarification on the following:</p>
+                    ${questionsHtml}
+                    <p style="margin-top: 1rem; font-size: 0.9rem; color: var(--color-ink-light);">
+                        Please provide your responses below. You can answer all questions in one response, or skip to proceed with best assumptions.
+                    </p>
+                `;
+
+                clarificationInput.value = '';
+                clarificationInput.placeholder = 'Enter your responses here...\n\nExample:\n1. Wife\'s name is Maria Martinez\n2. Financial advisor is John Smith at XYZ Wealth\n3. They decided on equal distribution...';
+
+                // Store original options for resubmission
+                clarificationOverlay.dataset.originalOptions = JSON.stringify(originalOptions);
+                clarificationOverlay.classList.add('visible');
             }
 
             function simulateStep(stepId, duration) {
@@ -1603,26 +1650,34 @@ Examples:
                 const documents = result.documents || [];
                 resultsSummary.textContent = `${documents.length} document${documents.length !== 1 ? 's' : ''} ready for download`;
 
-                documentsGrid.innerHTML = documents.map(doc => `
-                    <div class="document-card">
-                        <div class="document-icon">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-                                <polyline points="14 2 14 8 20 8"/>
-                            </svg>
+                if (documents.length === 0) {
+                    documentsGrid.innerHTML = `
+                        <div style="grid-column: 1 / -1; text-align: center; padding: 2rem; color: var(--color-ink-muted);">
+                            <p>No documents were generated. Please check your input and try again.</p>
                         </div>
-                        <h4 class="document-title">${doc.title}</h4>
-                        <p class="document-description">${doc.description}</p>
-                        <button class="document-download" onclick="downloadDocument('${doc.id}', '${doc.filename}')">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-                                <polyline points="7 10 12 15 17 10"/>
-                                <line x1="12" y1="15" x2="12" y2="3"/>
-                            </svg>
-                            Download ${doc.format.toUpperCase()}
-                        </button>
-                    </div>
-                `).join('');
+                    `;
+                } else {
+                    documentsGrid.innerHTML = documents.map(doc => `
+                        <div class="document-card">
+                            <div class="document-icon">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                                    <polyline points="14 2 14 8 20 8"/>
+                                </svg>
+                            </div>
+                            <h4 class="document-title">${doc.title}</h4>
+                            <p class="document-description">${doc.description}</p>
+                            <button class="document-download" onclick="downloadDocument('${doc.id}', '${doc.filename}')">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                                    <polyline points="7 10 12 15 17 10"/>
+                                    <line x1="12" y1="15" x2="12" y2="3"/>
+                                </svg>
+                                Download ${doc.format ? doc.format.toUpperCase() : 'DOCX'}
+                            </button>
+                        </div>
+                    `).join('');
+                }
 
                 // Scroll to results
                 resultsSection.scrollIntoView({ behavior: 'smooth' });
@@ -1631,12 +1686,22 @@ Examples:
             // Clarification dialog handlers
             skipClarification.addEventListener('click', () => {
                 clarificationOverlay.classList.remove('visible');
+                // Resubmit with skip flag
+                const originalOptions = JSON.parse(clarificationOverlay.dataset.originalOptions || '{}');
+                originalOptions.skipClarifications = true;
+                processContent(originalOptions, 'SKIPPED');
             });
 
             submitClarification.addEventListener('click', () => {
-                const response = clarificationInput.value;
+                const responses = clarificationInput.value.trim();
+                if (!responses) {
+                    alert('Please enter your responses or click "Skip & Proceed" to continue without answering.');
+                    return;
+                }
                 clarificationOverlay.classList.remove('visible');
-                // Continue processing with clarification response
+                // Resubmit with clarification responses
+                const originalOptions = JSON.parse(clarificationOverlay.dataset.originalOptions || '{}');
+                processContent(originalOptions, responses);
             });
 
             // Initialize
