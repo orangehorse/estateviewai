@@ -787,7 +787,7 @@ app.post('/api/classify-document', async (req, res) => {
     const typeList = SUITE_DOCUMENT_TYPES.map(t => `${t.id}: ${t.label}`).join('\n');
 
     const response = await anthropic.messages.create({
-      model: 'claude-sonnet-4-5-20250929',
+      model: 'claude-sonnet-4-5-20250514',
       max_tokens: 200,
       messages: [{ role: 'user', content: `Classify this estate planning document based on its content. Choose the single best match from the list below.
 
@@ -842,7 +842,7 @@ app.post('/api/classify-documents', async (req, res) => {
     ).join('\n\n');
 
     const response = await anthropic.messages.create({
-      model: 'claude-sonnet-4-5-20250929',
+      model: 'claude-sonnet-4-5-20250514',
       max_tokens: 1000,
       messages: [{ role: 'user', content: `Classify each of these ${documents.length} estate planning documents based on their content. Choose the single best match from the list below for each.
 
@@ -938,7 +938,7 @@ app.post('/api/analyze-suite', async (req, res) => {
 
       try {
         const sumResponse = await anthropic.messages.create({
-          model: 'claude-sonnet-4-5-20250929',
+          model: 'claude-sonnet-4-5-20250514',
           max_tokens: 6000,
           messages: [{ role: 'user', content: `You are an expert estate planning attorney. Provide a structured summary of this estate planning document for use in a cross-document coordination review.
 
@@ -1049,7 +1049,7 @@ Be thorough. Flag anything that might create coordination issues with other esta
     ).join('\n\n');
 
     const coordResponse = await anthropic.messages.create({
-      model: 'claude-sonnet-4-5-20250929',
+      model: 'claude-sonnet-4-5-20250514',
       max_tokens: 8192,
       messages: [{ role: 'user', content: `You are an expert estate planning attorney conducting a comprehensive cross-document coordination review of an estate plan suite. You have summaries of ${validSummaries.length} documents. Analyze how these documents work together as a coordinated estate plan.
 
@@ -1129,7 +1129,7 @@ Be specific and reference actual document names and provisions. Focus on actiona
     send({ phase: 'report', step: totalDocs + 2, totalSteps: totalDocs + 3, message: 'Generating comprehensive suite report...' });
 
     const reportResponse = await anthropic.messages.create({
-      model: 'claude-sonnet-4-5-20250929',
+      model: 'claude-sonnet-4-5-20250514',
       max_tokens: 8192,
       messages: [{ role: 'user', content: `Generate a comprehensive estate plan suite review report based on the cross-document coordination analysis.
 
@@ -1436,7 +1436,7 @@ function createRedlineDocument(originalText, revisions, analysisResult, document
       alignment: AlignmentType.CENTER,
       spacing: { after: 400 },
       children: [
-        new TextRun({ text: `Prepared by EstateView AI — ${new Date().toLocaleDateString()}`, size: 22, italics: true, font: "Times New Roman" })
+        new TextRun({ text: `Prepared by EstateView AI â ${new Date().toLocaleDateString()}`, size: 22, italics: true, font: "Times New Roman" })
       ]
     }),
     new Paragraph({
@@ -1714,7 +1714,7 @@ function createRedlineDocument(originalText, revisions, analysisResult, document
         default: new Header({
           children: [new Paragraph({
             alignment: AlignmentType.RIGHT,
-            children: [new TextRun({ text: "EstateView AI — Proposed Revisions", size: 18, italics: true, color: "666666" })]
+            children: [new TextRun({ text: "EstateView AI â Proposed Revisions", size: 18, italics: true, color: "666666" })]
           })]
         })
       },
@@ -1725,7 +1725,7 @@ function createRedlineDocument(originalText, revisions, analysisResult, document
             children: [
               new TextRun({ text: "Page ", size: 18 }),
               new TextRun({ children: [PageNumber.CURRENT], size: 18 }),
-              new TextRun({ text: " — For informational purposes only. Not legal advice.", size: 18, color: "666666" })
+              new TextRun({ text: " â For informational purposes only. Not legal advice.", size: 18, color: "666666" })
             ]
           })]
         })
@@ -1769,17 +1769,17 @@ const DICTATION_SYSTEM_PROMPT = `You are Dictation AI, an advanced AI assistant 
 You must determine which documents to generate based on:
 
 1. **Explicit requests in the dictation**:
-   - "Prepare a letter to the client" → clientLetter
-   - "Send a copy to their CPA" or "Letter to [advisor name]" → advisorLetter
-   - "Prepare a follow-up reminder" or "reminder letter in one week" → reminderLetter
-   - "Staff checklist" or "checklist for the team" → staffChecklist
-   - "Internal memo" or "memo to staff" → internalMemo
-   - "Include citations" or when legal research is performed → citations
+   - "Prepare a letter to the client" â clientLetter
+   - "Send a copy to their CPA" or "Letter to [advisor name]" â advisorLetter
+   - "Prepare a follow-up reminder" or "reminder letter in one week" â reminderLetter
+   - "Staff checklist" or "checklist for the team" â staffChecklist
+   - "Internal memo" or "memo to staff" â internalMemo
+   - "Include citations" or when legal research is performed â citations
 
 2. **Implicit needs based on content**:
-   - If advisors (CPA, financial advisor, etc.) are mentioned by name → likely needs advisorLetter
-   - If legal research or calculations are performed → include citations document
-   - If follow-up items are discussed → may need reminderLetter
+   - If advisors (CPA, financial advisor, etc.) are mentioned by name â likely needs advisorLetter
+   - If legal research or calculations are performed â include citations document
+   - If follow-up items are discussed â may need reminderLetter
 
 3. **When unclear, ASK FOR CLARIFICATION**:
    If the dictation does not clearly specify what documents are needed, you MUST include a clarification request in the "clarificationsNeeded" array asking:
@@ -1789,7 +1789,7 @@ Do NOT assume all document types are needed. Only generate documents that are ex
 
 ## Processing Instructions
 1. **Identify embedded AI instructions** marked with:
-   - "AI—Please Do the Following—"
+   - "AIâPlease Do the Followingâ"
    - "Note to AI:"
    - "Instructions for AI:"
    - "Please include..." / "Make sure to..."
@@ -1809,8 +1809,8 @@ Do NOT assume all document types are needed. Only generate documents that are ex
    - State conclusion in plain English
 
 4. **Provide legal research** with proper citations:
-   - Statutes: IRC §2503(b); Fla. Stat. §736.0103
-   - Regulations: Treas. Reg. §25.2503-4(b)
+   - Statutes: IRC Â§2503(b); Fla. Stat. Â§736.0103
+   - Regulations: Treas. Reg. Â§25.2503-4(b)
    - Cases: Estate of Strangi v. Commissioner, 115 T.C. 478 (2000)
    - Mark confidence levels: HIGH, MEDIUM, LOW, or VERIFICATION REQUIRED
 
@@ -1877,7 +1877,7 @@ Client Letters: "This letter is intended to summarize our discussion and provide
 
 Research: "This research summary is provided for attorney review and verification. Citations should be confirmed for currency and applicability."
 
-Internal: "CONFIDENTIAL — ATTORNEY WORK PRODUCT"`;
+Internal: "CONFIDENTIAL â ATTORNEY WORK PRODUCT"`;
 
 // Store generated documents temporarily (in production, use proper storage)
 const generatedDocuments = new Map();
@@ -2055,7 +2055,7 @@ async function createDictationDocument(doc, fullResult) {
     children.push(
       new Paragraph({
         children: [new TextRun({ 
-          text: "CONFIDENTIAL — ATTORNEY WORK PRODUCT", 
+          text: "CONFIDENTIAL â ATTORNEY WORK PRODUCT", 
           bold: true, 
           size: 20,
           color: "666666"
@@ -2173,12 +2173,12 @@ async function createDictationDocument(doc, fullResult) {
       );
     }
     // Checkboxes (for checklists)
-    else if (trimmedLine.startsWith('☐ ') || trimmedLine.startsWith('- [ ] ')) {
-      const text = trimmedLine.replace(/^(☐ |- \[ \] )/, '');
+    else if (trimmedLine.startsWith('â ') || trimmedLine.startsWith('- [ ] ')) {
+      const text = trimmedLine.replace(/^(â |- \[ \] )/, '');
       children.push(
         new Paragraph({
           children: [
-            new TextRun({ text: "☐ ", size: 24 }),
+            new TextRun({ text: "â ", size: 24 }),
             new TextRun({ text: text, size: 24 })
           ],
           spacing: { after: 100 },
@@ -2187,7 +2187,7 @@ async function createDictationDocument(doc, fullResult) {
       );
     }
     // Bullet points
-    else if (trimmedLine.startsWith('- ') || trimmedLine.startsWith('• ')) {
+    else if (trimmedLine.startsWith('- ') || trimmedLine.startsWith('â¢ ')) {
       const text = trimmedLine.substring(2);
       children.push(
         new Paragraph({
@@ -2260,7 +2260,7 @@ async function createDictationDocument(doc, fullResult) {
       new Paragraph({
         shading: { fill: "FFF3CD", type: ShadingType.CLEAR },
         children: [new TextRun({ 
-          text: "⚠️ VERIFICATION REQUIRED: This research summary is provided for attorney review and verification. All citations should be confirmed for currency and applicability before reliance. This preliminary research does not constitute legal advice.",
+          text: "â ï¸ VERIFICATION REQUIRED: This research summary is provided for attorney review and verification. All citations should be confirmed for currency and applicability before reliance. This preliminary research does not constitute legal advice.",
           size: 22,
           bold: true
         })],
@@ -2304,7 +2304,7 @@ async function createDictationDocument(doc, fullResult) {
           children: [new Paragraph({
             alignment: AlignmentType.RIGHT,
             children: [new TextRun({ 
-              text: isInternalDoc ? "CONFIDENTIAL" : "EstateView AI — Dictation", 
+              text: isInternalDoc ? "CONFIDENTIAL" : "EstateView AI â Dictation", 
               size: 18, 
               italics: true, 
               color: "666666" 
@@ -2320,7 +2320,7 @@ async function createDictationDocument(doc, fullResult) {
               new TextRun({ text: "Page ", size: 18 }),
               new TextRun({ children: [PageNumber.CURRENT], size: 18 }),
               new TextRun({ 
-                text: isInternalDoc ? " — Attorney Work Product" : " — Review required before delivery", 
+                text: isInternalDoc ? " â Attorney Work Product" : " â Review required before delivery", 
                 size: 18, 
                 color: "666666" 
               })
