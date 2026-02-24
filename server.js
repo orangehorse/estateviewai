@@ -787,7 +787,7 @@ app.post('/api/classify-document', async (req, res) => {
     const typeList = SUITE_DOCUMENT_TYPES.map(t => `${t.id}: ${t.label}`).join('\n');
 
     const response = await anthropic.messages.create({
-      model: 'claude-sonnet-4-5-20250514',
+      model: 'claude-sonnet-4-5',
       max_tokens: 200,
       messages: [{ role: 'user', content: `Classify this estate planning document based on its content. Choose the single best match from the list below.
 
@@ -842,7 +842,7 @@ app.post('/api/classify-documents', async (req, res) => {
     ).join('\n\n');
 
     const response = await anthropic.messages.create({
-      model: 'claude-sonnet-4-5-20250514',
+      model: 'claude-sonnet-4-5',
       max_tokens: 1000,
       messages: [{ role: 'user', content: `Classify each of these ${documents.length} estate planning documents based on their content. Choose the single best match from the list below for each.
 
@@ -938,7 +938,7 @@ app.post('/api/analyze-suite', async (req, res) => {
 
       try {
         const sumResponse = await anthropic.messages.create({
-          model: 'claude-sonnet-4-5-20250514',
+          model: 'claude-sonnet-4-5',
           max_tokens: 6000,
           messages: [{ role: 'user', content: `You are an expert estate planning attorney. Provide a structured summary of this estate planning document for use in a cross-document coordination review.
 
@@ -1049,7 +1049,7 @@ Be thorough. Flag anything that might create coordination issues with other esta
     ).join('\n\n');
 
     const coordResponse = await anthropic.messages.create({
-      model: 'claude-sonnet-4-5-20250514',
+      model: 'claude-sonnet-4-5',
       max_tokens: 8192,
       messages: [{ role: 'user', content: `You are an expert estate planning attorney conducting a comprehensive cross-document coordination review of an estate plan suite. You have summaries of ${validSummaries.length} documents. Analyze how these documents work together as a coordinated estate plan.
 
@@ -1129,7 +1129,7 @@ Be specific and reference actual document names and provisions. Focus on actiona
     send({ phase: 'report', step: totalDocs + 2, totalSteps: totalDocs + 3, message: 'Generating comprehensive suite report...' });
 
     const reportResponse = await anthropic.messages.create({
-      model: 'claude-sonnet-4-5-20250514',
+      model: 'claude-sonnet-4-5',
       max_tokens: 8192,
       messages: [{ role: 'user', content: `Generate a comprehensive estate plan suite review report based on the cross-document coordination analysis.
 
