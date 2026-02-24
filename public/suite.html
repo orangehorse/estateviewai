@@ -1,0 +1,394 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EstateView AI | Estate Plan Suite Review</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;0,700;1,400&family=DM+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <style>
+        :root {
+            --color-ink: #1a1a2e; --color-ink-light: #4a4a5e; --color-ink-muted: #8a8a9e;
+            --color-parchment: #faf9f7; --color-parchment-dark: #f0efe9;
+            --color-gold: #b8860b; --color-gold-light: #daa520;
+            --color-burgundy: #722f37; --color-burgundy-light: #8b3a44;
+            --color-forest: #2d4a3e; --color-forest-light: #3d5a4e;
+            --color-success: #2d6a4f; --color-warning: #b8860b; --color-danger: #9b2226;
+            --color-white: #ffffff; --color-navy: #1e3a5f; --color-navy-light: #2a4f7f;
+            --font-display: 'Cormorant Garamond', Georgia, serif;
+            --font-body: 'DM Sans', -apple-system, sans-serif;
+            --shadow-soft: 0 2px 8px rgba(26,26,46,0.08); --shadow-medium: 0 4px 20px rgba(26,26,46,0.12); --shadow-strong: 0 8px 40px rgba(26,26,46,0.16);
+            --radius-sm: 4px; --radius-md: 8px; --radius-lg: 16px;
+            --transition-fast: 0.15s ease; --transition-medium: 0.3s ease;
+        }
+        *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+        html{font-size:16px;scroll-behavior:smooth}
+        body{font-family:var(--font-body);background:var(--color-parchment);color:var(--color-ink);line-height:1.6;min-height:100vh}
+        body::before{content:'';position:fixed;top:0;left:0;right:0;bottom:0;background:radial-gradient(ellipse at 20% 20%,rgba(30,58,95,0.04) 0%,transparent 50%),radial-gradient(ellipse at 80% 80%,rgba(114,47,55,0.03) 0%,transparent 50%);pointer-events:none;z-index:-1}
+        .header{background:linear-gradient(135deg,#1e3a5f 0%,#2a2a4e 50%,var(--color-ink) 100%);color:var(--color-white);padding:2rem 0;position:relative;overflow:hidden}
+        .header-content{max-width:1100px;margin:0 auto;padding:0 2rem;display:flex;align-items:center;justify-content:space-between}
+        .logo-section{display:flex;flex-direction:column;gap:0.25rem}
+        .logo{font-family:var(--font-display);font-size:2rem;font-weight:700;letter-spacing:-0.02em}
+        .logo span{color:var(--color-gold-light)}
+        .tagline{font-size:0.85rem;opacity:0.75;letter-spacing:0.02em}
+        .header-nav{display:flex;gap:0.5rem}
+        .nav-link{color:rgba(255,255,255,0.7);text-decoration:none;font-size:0.9rem;padding:0.5rem 1rem;border-radius:var(--radius-sm);transition:var(--transition-fast)}
+        .nav-link:hover{color:var(--color-white);background:rgba(255,255,255,0.1)}
+        .nav-link.active{color:var(--color-white);background:rgba(255,255,255,0.15);font-weight:600}
+        .container{max-width:1100px;margin:0 auto;padding:2rem}
+        .upload-section{background:var(--color-white);border-radius:var(--radius-lg);padding:2.5rem;box-shadow:var(--shadow-medium);margin-bottom:2rem}
+        .section-title{font-family:var(--font-display);font-size:1.6rem;font-weight:600;margin-bottom:0.5rem}
+        .section-subtitle{font-size:0.9rem;color:var(--color-ink-muted);margin-bottom:2rem;line-height:1.5}
+        .doc-queue{margin-bottom:1.5rem}
+        .doc-queue-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem}
+        .doc-count{font-size:0.85rem;color:var(--color-ink-muted);background:var(--color-parchment);padding:0.3rem 0.8rem;border-radius:12px}
+        .doc-queue-list{display:flex;flex-direction:column;gap:0.75rem}
+        .doc-queue-empty{text-align:center;padding:2rem;color:var(--color-ink-muted);font-size:0.95rem;border:2px dashed var(--color-parchment-dark);border-radius:var(--radius-md)}
+        .doc-item{display:flex;align-items:center;gap:1rem;padding:1rem 1.25rem;background:var(--color-parchment);border-radius:var(--radius-md);border:1px solid var(--color-parchment-dark);transition:var(--transition-fast)}
+        .doc-item:hover{border-color:var(--color-navy)}
+        .doc-item-number{width:28px;height:28px;border-radius:50%;background:var(--color-navy);color:white;display:flex;align-items:center;justify-content:center;font-size:0.8rem;font-weight:600;flex-shrink:0}
+        .doc-item-info{flex:1;min-width:0}
+        .doc-item-name{font-weight:600;font-size:0.9rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+        .doc-item-meta{font-size:0.8rem;color:var(--color-ink-muted)}
+        .doc-item-type select{font-family:var(--font-body);font-size:0.8rem;padding:0.3rem 0.5rem;border:1px solid var(--color-parchment-dark);border-radius:var(--radius-sm);background:white;color:var(--color-ink);cursor:pointer;max-width:220px}
+        .doc-item-type select:focus{outline:none;border-color:var(--color-navy)}
+        .doc-item-remove{background:none;border:none;color:var(--color-ink-muted);cursor:pointer;font-size:1.1rem;padding:0.25rem;border-radius:var(--radius-sm);transition:var(--transition-fast);flex-shrink:0}
+        .doc-item-remove:hover{color:var(--color-danger);background:rgba(155,34,38,0.1)}
+        .add-docs-area{border:2px dashed var(--color-parchment-dark);border-radius:var(--radius-md);padding:1.5rem;text-align:center;cursor:pointer;transition:var(--transition-medium);margin-bottom:1.5rem}
+        .add-docs-area:hover,.add-docs-area.drag-over{border-color:var(--color-navy);background:rgba(30,58,95,0.03)}
+        .add-docs-icon{width:32px;height:32px;margin:0 auto 0.5rem;color:var(--color-navy)}
+        .add-docs-text{font-size:0.95rem;color:var(--color-ink-light)}
+        .add-docs-subtext{font-size:0.8rem;color:var(--color-ink-muted);margin-top:0.25rem}
+        .add-docs-button{display:inline-block;margin-top:0.75rem;padding:0.5rem 1.25rem;background:var(--color-navy);color:white;border:none;border-radius:var(--radius-sm);font-family:var(--font-body);font-size:0.85rem;font-weight:500;cursor:pointer;transition:var(--transition-fast)}
+        .add-docs-button:hover{background:var(--color-navy-light)}
+        .considerations-section{margin-bottom:1.5rem}
+        .considerations-label{display:block;font-size:0.9rem;font-weight:600;margin-bottom:0.5rem}
+        .considerations-textarea{width:100%;min-height:80px;padding:0.75rem 1rem;border:1px solid var(--color-parchment-dark);border-radius:var(--radius-md);font-family:var(--font-body);font-size:0.9rem;resize:vertical;transition:var(--transition-fast)}
+        .considerations-textarea:focus{outline:none;border-color:var(--color-navy)}
+        .analyze-button{width:100%;padding:1rem 2rem;background:linear-gradient(135deg,var(--color-navy) 0%,#1e3a5f 100%);color:white;border:none;border-radius:var(--radius-md);font-family:var(--font-body);font-size:1.05rem;font-weight:600;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:0.75rem;transition:var(--transition-medium)}
+        .analyze-button:hover:not(:disabled){transform:translateY(-1px);box-shadow:var(--shadow-medium)}
+        .analyze-button:disabled{opacity:0.5;cursor:not-allowed;transform:none}
+        .analyze-button svg{width:22px;height:22px}
+        .data-notice{background:var(--color-parchment);border-radius:var(--radius-md);padding:1rem 1.25rem}
+        .data-notice-title{font-weight:600;font-size:0.9rem;margin-bottom:0.25rem}
+        .progress-section{background:var(--color-white);border-radius:var(--radius-lg);padding:2.5rem;box-shadow:var(--shadow-medium);margin-bottom:2rem;display:none}
+        .progress-section.visible{display:block}
+        .progress-header{display:flex;align-items:center;gap:1rem;margin-bottom:1.5rem}
+        .progress-spinner{width:28px;height:28px;border:3px solid var(--color-parchment-dark);border-top-color:var(--color-navy);border-radius:50%;animation:spin 0.8s linear infinite}
+        @keyframes spin{to{transform:rotate(360deg)}}
+        .progress-title{font-family:var(--font-display);font-size:1.4rem;font-weight:600}
+        .progress-message{font-size:0.95rem;color:var(--color-ink-light);margin-bottom:1rem;min-height:1.4em}
+        .progress-bar-container{width:100%;height:8px;background:var(--color-parchment);border-radius:4px;overflow:hidden}
+        .progress-bar{height:100%;background:linear-gradient(90deg,var(--color-navy),var(--color-navy-light));border-radius:4px;transition:width 0.5s ease;width:0%}
+        .progress-detail{font-size:0.8rem;color:var(--color-ink-muted);margin-top:0.5rem;text-align:right}
+        .error-message{background:#fff5f5;border:1px solid #fecaca;border-radius:var(--radius-md);padding:1.25rem 1.5rem;margin-bottom:2rem;display:none}
+        .error-message.visible{display:block}
+        .error-title{color:var(--color-danger);font-weight:600;margin-bottom:0.25rem}
+        .error-text{color:#7f1d1d;font-size:0.9rem}
+        .results-section{display:none}
+        .results-section.visible{display:block}
+        .score-card{background:linear-gradient(135deg,#1e3a5f,#2a2a4e);color:white;border-radius:var(--radius-lg);padding:2rem 2.5rem;margin-bottom:2rem;box-shadow:var(--shadow-strong)}
+        .score-header{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:1.5rem}
+        .score-info h2{font-family:var(--font-display);font-size:1.6rem;font-weight:600}
+        .score-info p{opacity:0.8;font-size:0.9rem;margin-top:0.25rem}
+        .score-display{text-align:center}
+        .score-number{font-family:var(--font-display);font-size:3.5rem;font-weight:700;line-height:1}
+        .score-label{font-size:0.8rem;opacity:0.7;margin-top:0.25rem}
+        .score-grade{display:inline-block;margin-top:0.5rem;padding:0.3rem 1rem;border-radius:12px;font-size:0.8rem;font-weight:600;background:rgba(255,255,255,0.15)}
+        .score-badge-row{display:flex;gap:0.75rem;margin-top:1rem;flex-wrap:wrap}
+        .score-badge{padding:0.3rem 0.8rem;border-radius:12px;font-size:0.75rem;font-weight:500;background:rgba(255,255,255,0.1)}
+        .download-section{display:flex;gap:1rem;margin-bottom:2rem;flex-wrap:wrap}
+        .download-button{display:flex;align-items:center;gap:0.5rem;padding:0.75rem 1.5rem;background:var(--color-white);border:2px solid var(--color-parchment-dark);border-radius:var(--radius-md);font-family:var(--font-body);font-size:0.9rem;font-weight:500;cursor:pointer;transition:var(--transition-fast);color:var(--color-ink)}
+        .download-button:hover{border-color:var(--color-navy);color:var(--color-navy)}
+        .download-button svg{width:18px;height:18px}
+        .report-section{background:var(--color-white);border-radius:var(--radius-lg);margin-bottom:1rem;box-shadow:var(--shadow-soft);overflow:hidden}
+        .report-header{display:flex;align-items:center;justify-content:space-between;padding:1.25rem 1.5rem;cursor:pointer;user-select:none;transition:var(--transition-fast)}
+        .report-header:hover{background:var(--color-parchment)}
+        .report-header-left{display:flex;align-items:center;gap:1rem}
+        .report-icon{width:40px;height:40px;border-radius:var(--radius-md);display:flex;align-items:center;justify-content:center;flex-shrink:0}
+        .report-icon svg{width:20px;height:20px}
+        .report-title{font-weight:600;font-size:1rem}
+        .report-subtitle{font-size:0.8rem;color:var(--color-ink-muted);margin-top:2px}
+        .report-toggle{transition:transform var(--transition-medium);color:var(--color-ink-muted)}
+        .report-toggle svg{width:20px;height:20px}
+        .report-section.expanded .report-toggle{transform:rotate(180deg)}
+        .report-content{max-height:0;overflow:hidden;transition:max-height 0.4s ease}
+        .report-section.expanded .report-content{max-height:8000px}
+        .report-body{padding:0 1.5rem 1.5rem;font-size:0.95rem;line-height:1.7}
+        .report-body h4{font-family:var(--font-display);font-size:1.1rem;margin-top:1.25rem;margin-bottom:0.5rem;color:var(--color-ink)}
+        .report-body ul,.report-body ol{padding-left:1.5rem;margin:0.5rem 0}
+        .report-body li{margin-bottom:0.4rem}
+        .report-body p{margin-bottom:0.75rem}
+        .report-body table{width:100%;border-collapse:collapse;margin:0.75rem 0}
+        .report-body th,.report-body td{padding:0.6rem 0.8rem;text-align:left;border-bottom:1px solid var(--color-parchment-dark);font-size:0.85rem}
+        .report-body th{background:var(--color-parchment);font-weight:600}
+        .issue-item{border-left:4px solid var(--color-ink-muted);padding:0.75rem 1rem;margin:0.75rem 0;background:var(--color-parchment);border-radius:0 var(--radius-sm) var(--radius-sm) 0}
+        .issue-item.critical{border-left-color:var(--color-danger);background:#fef2f2}
+        .issue-item.important{border-left-color:var(--color-warning);background:#fffbeb}
+        .issue-item.minor,.issue-item.advisory{border-left-color:var(--color-forest);background:#f0fdf4}
+        .issue-header{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:0.5rem}
+        .issue-title{font-weight:600;font-size:0.9rem}
+        .issue-severity{font-size:0.7rem;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;padding:0.15rem 0.5rem;border-radius:8px}
+        .issue-severity.critical{background:#fecaca;color:#991b1b}
+        .issue-severity.important{background:#fde68a;color:#92400e}
+        .issue-severity.minor,.issue-severity.advisory{background:#bbf7d0;color:#166534}
+        .issue-description{font-size:0.85rem;color:var(--color-ink-light);margin-top:0.5rem;line-height:1.6}
+        .issue-docs{font-size:0.75rem;color:var(--color-ink-muted);margin-top:0.35rem;font-style:italic}
+        .coord-scores-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:1rem;margin:1rem 0}
+        .coord-score-card{background:var(--color-parchment);border-radius:var(--radius-md);padding:1rem 1.25rem;border:1px solid var(--color-parchment-dark)}
+        .coord-score-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:0.5rem}
+        .coord-score-name{font-weight:600;font-size:0.85rem}
+        .coord-score-value{font-family:var(--font-display);font-size:1.3rem;font-weight:700}
+        .coord-score-bar{height:6px;background:#e5e7eb;border-radius:3px;overflow:hidden;margin-bottom:0.5rem}
+        .coord-score-fill{height:100%;border-radius:3px;transition:width 0.5s ease}
+        .coord-score-findings{font-size:0.8rem;color:var(--color-ink-light)}
+        .fid-map-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:1rem;margin:1rem 0}
+        .fid-map-card{background:var(--color-parchment);border-radius:var(--radius-md);padding:1rem 1.25rem;border:1px solid var(--color-parchment-dark)}
+        .fid-map-name{font-weight:600;font-size:0.95rem;margin-bottom:0.25rem}
+        .fid-map-roles{font-size:0.8rem;color:var(--color-ink-light)}
+        .fid-map-role-item{display:flex;gap:0.5rem;margin-top:0.25rem;align-items:baseline}
+        .fid-map-doc-badge{display:inline-block;font-size:0.7rem;background:rgba(30,58,95,0.1);color:var(--color-navy);padding:0.1rem 0.5rem;border-radius:8px;white-space:nowrap}
+        .priority-matrix{display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin:1rem 0}
+        .matrix-quadrant{border-radius:var(--radius-md);padding:1rem 1.25rem}
+        .matrix-quadrant.do-now{background:#fef2f2;border:1px solid #fecaca}
+        .matrix-quadrant.plan-for{background:#fffbeb;border:1px solid #fde68a}
+        .matrix-quadrant.quick-wins{background:#f0fdf4;border:1px solid #bbf7d0}
+        .matrix-quadrant.consider{background:var(--color-parchment);border:1px solid var(--color-parchment-dark)}
+        .matrix-title{font-weight:600;font-size:0.85rem;margin-bottom:0.5rem}
+        .matrix-items{padding-left:1rem;font-size:0.85rem}
+        .matrix-items li{margin-bottom:0.4rem}
+        .scenario-tabs{display:flex;gap:0.5rem;margin-bottom:1rem}
+        .scenario-tab{padding:0.5rem 1rem;border:1px solid var(--color-parchment-dark);border-radius:var(--radius-sm);font-family:var(--font-body);font-size:0.85rem;cursor:pointer;background:white;transition:var(--transition-fast)}
+        .scenario-tab.active{background:var(--color-navy);color:white;border-color:var(--color-navy)}
+        .scenario-tab:hover:not(.active){border-color:var(--color-navy)}
+        .scenario-content{display:none}
+        .scenario-content.active{display:block}
+        .footer{text-align:center;padding:2rem;color:var(--color-ink-muted);font-size:0.8rem}
+        .footer a{color:var(--color-gold);text-decoration:none}
+        @media(max-width:768px){.header-content{flex-direction:column;gap:1rem;text-align:center}.header-nav{flex-wrap:wrap;justify-content:center}.score-header{flex-direction:column;text-align:center}.priority-matrix,.coord-scores-grid,.fid-map-grid{grid-template-columns:1fr}.doc-item{flex-wrap:wrap}.doc-item-type{width:100%}.doc-item-type select{max-width:100%;width:100%}}
+        @media print{.upload-section,.progress-section,.download-section{display:none!important}.results-section{display:block!important}.report-section{break-inside:avoid}.report-content{max-height:none!important}}
+    </style>
+</head>
+<body>
+    <header class="header">
+        <div class="header-content">
+            <div class="logo-section">
+                <h1 class="logo">Estate<span>View</span> AI</h1>
+                <p class="tagline">Estate Plan Suite Review — Multi-Document Coordination Analysis</p>
+            </div>
+            <nav class="header-nav">
+                <a href="index.html" class="nav-link">Trust Analysis</a>
+                <a href="suite.html" class="nav-link active">Suite Review</a>
+                <a href="dictation.html" class="nav-link">Dictation AI</a>
+            </nav>
+        </div>
+    </header>
+<main class="container">
+    <section class="upload-section" id="uploadSection">
+        <h2 class="section-title">Estate Plan Suite Review</h2>
+        <p class="section-subtitle">Upload multiple estate planning documents to analyze how they work together as a coordinated plan. The suite review identifies conflicts, gaps, and coordination opportunities across your entire document set.</p>
+        <div class="doc-queue" id="docQueue">
+            <div class="doc-queue-header">
+                <span style="font-weight:600;font-size:0.95rem;">Documents</span>
+                <span class="doc-count" id="docCount">0 documents</span>
+            </div>
+            <div class="doc-queue-list" id="docQueueList">
+                <div class="doc-queue-empty" id="docQueueEmpty">No documents added yet. Upload at least 2 estate planning documents to begin.</div>
+            </div>
+        </div>
+        <div class="add-docs-area" id="addDocsArea">
+            <svg class="add-docs-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 4v16m8-8H4"/></svg>
+            <p class="add-docs-text">Drag & drop documents here or click to browse</p>
+            <p class="add-docs-subtext">Supports PDF, DOCX, and TXT files • Up to 10 documents</p>
+            <label class="add-docs-button" for="suiteFileInput">Add Documents</label>
+            <input type="file" id="suiteFileInput" accept=".pdf,.docx,.doc,.txt" multiple style="display:none;">
+        </div>
+        <div class="considerations-section">
+            <label class="considerations-label" for="suiteConsiderations">Special Considerations (optional):</label>
+            <textarea class="considerations-textarea" id="suiteConsiderations" placeholder="Describe your estate plan goals, family circumstances, or specific areas of concern."></textarea>
+        </div>
+        <button class="analyze-button" id="analyzeSuiteBtn" disabled>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/><path d="M9 14l2 2 4-4"/></svg>
+            Analyze Estate Plan Suite
+        </button>
+        <div class="data-notice" style="margin-top:1.5rem">
+            <div class="data-notice-title">🔒 Data Privacy Notice</div>
+            <p style="font-size:0.85rem;color:var(--color-ink-light)">Documents are processed securely and <strong>not stored</strong> after analysis. Content is sent to Claude AI (Sonnet 4.5) for processing. Consider redacting SSNs and account numbers before uploading.</p>
+        </div>
+    </section>
+    <section class="progress-section" id="progressSection">
+        <div class="progress-header"><div class="progress-spinner"></div><h2 class="progress-title">Analyzing Estate Plan Suite...</h2></div>
+        <div class="progress-message" id="progressMessage">Preparing documents...</div>
+        <div class="progress-bar-container"><div class="progress-bar" id="progressBar"></div></div>
+        <div class="progress-detail" id="progressDetail"></div>
+    </section>
+    <div class="error-message" id="errorMessage"><div class="error-title">Analysis Error</div><div class="error-text" id="errorText"></div></div>
+    <section class="results-section" id="resultsSection">
+        <div class="score-card">
+            <div class="score-header">
+                <div class="score-info"><h2>Estate Plan Coordination Score</h2><p id="scoreSummary">Multi-Document Suite Analysis Complete</p></div>
+                <div class="score-display"><div class="score-number" id="overallScore">--</div><div class="score-label">out of 100</div><div class="score-grade" id="scoreGrade">--</div></div>
+            </div>
+            <div class="score-badge-row" id="scoreBadges"></div>
+        </div>
+        <div class="download-section">
+            <button class="download-button" id="downloadPdfBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>Download PDF Report</button>
+            <button class="download-button" id="newAnalysisBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 4v16m8-8H4"/></svg>New Analysis</button>
+        </div>
+        <div class="report-section expanded" id="executiveSummarySection"><div class="report-header"><div class="report-header-left"><div class="report-icon" style="background:rgba(30,58,95,0.12);color:var(--color-navy)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg></div><div><div class="report-title">Executive Summary</div><div class="report-subtitle">Overall estate plan coordination assessment</div></div></div><div class="report-toggle"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 9l-7 7-7-7"/></svg></div></div><div class="report-content"><div class="report-body" id="executiveSummaryContent"></div></div></div>
+        <div class="report-section" id="coordScoresSection"><div class="report-header"><div class="report-header-left"><div class="report-icon" style="background:rgba(45,106,79,0.12);color:var(--color-success)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg></div><div><div class="report-title">Coordination Scores by Category</div><div class="report-subtitle">How well documents align across 9 coordination dimensions</div></div></div><div class="report-toggle"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 9l-7 7-7-7"/></svg></div></div><div class="report-content"><div class="report-body" id="coordScoresContent"></div></div></div>
+        <div class="report-section" id="conflictsSection"><div class="report-header"><div class="report-header-left"><div class="report-icon" style="background:rgba(155,34,38,0.12);color:var(--color-danger)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg></div><div><div class="report-title">Critical Conflicts & Issues</div><div class="report-subtitle">Cross-document conflicts and coordination problems</div></div></div><div class="report-toggle"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 9l-7 7-7-7"/></svg></div></div><div class="report-content"><div class="report-body" id="conflictsContent"></div></div></div>
+        <div class="report-section" id="fiduciaryMapSection"><div class="report-header"><div class="report-header-left"><div class="report-icon" style="background:rgba(114,47,55,0.12);color:var(--color-burgundy)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg></div><div><div class="report-title">Fiduciary Map</div><div class="report-subtitle">Who serves in what capacity across all documents</div></div></div><div class="report-toggle"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 9l-7 7-7-7"/></svg></div></div><div class="report-content"><div class="report-body" id="fiduciaryMapContent"></div></div></div>
+        <div class="report-section" id="beneficiaryMapSection"><div class="report-header"><div class="report-header-left"><div class="report-icon" style="background:rgba(184,134,11,0.12);color:var(--color-gold)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg></div><div><div class="report-title">Beneficiary Map</div><div class="report-subtitle">How beneficiaries are treated across all documents</div></div></div><div class="report-toggle"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 9l-7 7-7-7"/></svg></div></div><div class="report-content"><div class="report-body" id="beneficiaryMapContent"></div></div></div>
+        <div class="report-section" id="scenarioSection"><div class="report-header"><div class="report-header-left"><div class="report-icon" style="background:rgba(45,74,62,0.12);color:var(--color-forest)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></div><div><div class="report-title">Scenario Analysis</div><div class="report-subtitle">What happens upon death, incapacity, and key events</div></div></div><div class="report-toggle"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 9l-7 7-7-7"/></svg></div></div><div class="report-content"><div class="report-body" id="scenarioContent"></div></div></div>
+        <div class="report-section" id="taxCoordSection"><div class="report-header"><div class="report-header-left"><div class="report-icon" style="background:rgba(30,58,95,0.12);color:var(--color-navy)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="20" height="14" rx="2" ry="2"/><path d="M16 21V5a2 2 0 00-2-2h-4a2 2 0 00-2 2v16"/></svg></div><div><div class="report-title">Tax Structure Coordination</div><div class="report-subtitle">How the plan works together for tax efficiency</div></div></div><div class="report-toggle"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 9l-7 7-7-7"/></svg></div></div><div class="report-content"><div class="report-body" id="taxCoordContent"></div></div></div>
+        <div class="report-section" id="missingDocsSection"><div class="report-header"><div class="report-header-left"><div class="report-icon" style="background:rgba(184,134,11,0.12);color:var(--color-warning)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V9z"/><polyline points="13 2 13 9 20 9"/><line x1="12" y1="12" x2="12" y2="18"/><line x1="9" y1="15" x2="15" y2="15"/></svg></div><div><div class="report-title">Missing Documents & Gaps</div><div class="report-subtitle">Documents that should exist given your plan structure</div></div></div><div class="report-toggle"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 9l-7 7-7-7"/></svg></div></div><div class="report-content"><div class="report-body" id="missingDocsContent"></div></div></div>
+        <div class="report-section" id="timelineSection"><div class="report-header"><div class="report-header-left"><div class="report-icon" style="background:rgba(45,74,62,0.12);color:var(--color-forest)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg></div><div><div class="report-title">Document Timeline</div><div class="report-subtitle">Execution dates and currency of each document</div></div></div><div class="report-toggle"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 9l-7 7-7-7"/></svg></div></div><div class="report-content"><div class="report-body" id="timelineContent"></div></div></div>
+        <div class="report-section" id="recommendationsSection"><div class="report-header"><div class="report-header-left"><div class="report-icon" style="background:rgba(45,106,79,0.12);color:var(--color-success)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg></div><div><div class="report-title">Recommendations</div><div class="report-subtitle">Prioritized actions to improve plan coordination</div></div></div><div class="report-toggle"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 9l-7 7-7-7"/></svg></div></div><div class="report-content"><div class="report-body" id="recommendationsContent"></div></div></div>
+        <div class="report-section" id="matrixSection"><div class="report-header"><div class="report-header-left"><div class="report-icon" style="background:rgba(114,47,55,0.12);color:var(--color-burgundy)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="12" y1="3" x2="12" y2="21"/></svg></div><div><div class="report-title">Action Prioritization Matrix</div><div class="report-subtitle">Urgency vs. impact framework for next steps</div></div></div><div class="report-toggle"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 9l-7 7-7-7"/></svg></div></div><div class="report-content"><div class="report-body" id="matrixContent"></div></div></div>
+        <div class="report-section" id="attorneyQuestionsSection"><div class="report-header"><div class="report-header-left"><div class="report-icon" style="background:rgba(114,47,55,0.12);color:var(--color-burgundy)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg></div><div><div class="report-title">Questions for Your Attorney</div><div class="report-subtitle">Cross-document questions for your estate planning team</div></div></div><div class="report-toggle"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 9l-7 7-7-7"/></svg></div></div><div class="report-content"><div class="report-body" id="attorneyQuestionsContent"></div></div></div>
+        <div class="report-section" id="docSummariesSection"><div class="report-header"><div class="report-header-left"><div class="report-icon" style="background:rgba(30,58,95,0.12);color:var(--color-navy)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg></div><div><div class="report-title">Individual Document Summaries</div><div class="report-subtitle">Key details from each document reviewed</div></div></div><div class="report-toggle"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 9l-7 7-7-7"/></svg></div></div><div class="report-content"><div class="report-body" id="docSummariesContent"></div></div></div>
+        <div class="report-section" id="strengthsSection"><div class="report-header"><div class="report-header-left"><div class="report-icon" style="background:rgba(45,106,79,0.12);color:var(--color-success)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 9V5a3 3 0 00-3-3l-4 9v11h11.28a2 2 0 002-1.7l1.38-9a2 2 0 00-2-2.3zM7 22H4a2 2 0 01-2-2v-7a2 2 0 012-2h3"/></svg></div><div><div class="report-title">Plan Strengths</div><div class="report-subtitle">What's working well across the estate plan</div></div></div><div class="report-toggle"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 9l-7 7-7-7"/></svg></div></div><div class="report-content"><div class="report-body" id="strengthsContent"></div></div></div>
+    </section>
+</main>
+<footer class="footer">
+    <p>EstateView AI — Estate Plan Suite Review</p>
+    <p>Powered by Claude AI (Sonnet 4.5) | For informational purposes only — not legal advice</p>
+    <p><a href="/privacy">Privacy Policy</a></p>
+</footer>
+<script>
+pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+const DOCUMENT_TYPES=[{id:'revocable_trust',label:'Revocable Living Trust'},{id:'irrevocable_trust',label:'Irrevocable Trust'},{id:'ilit',label:'Irrevocable Life Insurance Trust (ILIT)'},{id:'pourover_will',label:'Pour-Over Will'},{id:'last_will',label:'Last Will & Testament'},{id:'durable_poa',label:'Durable Power of Attorney'},{id:'healthcare_directive',label:'Healthcare Directive / Living Will'},{id:'healthcare_poa',label:'Healthcare Power of Attorney'},{id:'beneficiary_designation',label:'Beneficiary Designation Form'},{id:'prenuptial',label:'Prenuptial / Postnuptial Agreement'},{id:'business_agreement',label:'Business Operating / Partnership Agreement'},{id:'property_deed',label:'Property Deed / Title'},{id:'trust_amendment',label:'Trust Amendment / Restatement'},{id:'charitable_trust',label:'Charitable Trust / Foundation Documents'},{id:'qprt',label:'Qualified Personal Residence Trust (QPRT)'},{id:'grat',label:'Grantor Retained Annuity Trust (GRAT)'},{id:'family_llc',label:'Family LLC / LP Agreement'},{id:'letter_of_wishes',label:'Letter of Wishes / Intent'},{id:'tangible_property_memo',label:'Tangible Personal Property Memorandum'},{id:'other',label:'Other'}];
+document.addEventListener('DOMContentLoaded',()=>{
+const addDocsArea=document.getElementById('addDocsArea'),fileInput=document.getElementById('suiteFileInput'),docQueueList=document.getElementById('docQueueList'),docQueueEmpty=document.getElementById('docQueueEmpty'),docCount=document.getElementById('docCount'),analyzeBtn=document.getElementById('analyzeSuiteBtn'),progressSection=document.getElementById('progressSection'),errorMessage=document.getElementById('errorMessage'),resultsSection=document.getElementById('resultsSection');
+let queuedDocuments=[],analysisResult=null;
+function typeSelectHTML(sel){return '<select class="doc-type-select">'+DOCUMENT_TYPES.map(t=>'<option value="'+t.id+'"'+(t.id===sel?' selected':'')+'>'+t.label+'</option>').join('')+'</select>';}
+function guessType(n){n=n.toLowerCase();if(n.includes('ilit')||n.includes('life insurance trust'))return'ilit';if(n.includes('revocable')||(n.includes('trust')&&!n.includes('irrevocable')))return'revocable_trust';if(n.includes('irrevocable'))return'irrevocable_trust';if(n.includes('pour-over')||n.includes('pourover'))return'pourover_will';if(n.includes('will')||n.includes('testament'))return'last_will';if(n.includes('health')&&n.includes('poa'))return'healthcare_poa';if(n.includes('health')||n.includes('directive')||n.includes('living will'))return'healthcare_directive';if(n.includes('power of attorney')||n.includes('poa')||n.includes('durable'))return'durable_poa';if(n.includes('beneficiary'))return'beneficiary_designation';if(n.includes('prenup')||n.includes('postnup'))return'prenuptial';if(n.includes('operating')||n.includes('partnership'))return'business_agreement';if(n.includes('deed')||n.includes('title'))return'property_deed';if(n.includes('amendment')||n.includes('restatement'))return'trust_amendment';if(n.includes('charit'))return'charitable_trust';if(n.includes('qprt'))return'qprt';if(n.includes('grat'))return'grat';if(n.includes('llc'))return'family_llc';if(n.includes('letter')&&n.includes('wish'))return'letter_of_wishes';if(n.includes('tangible')||n.includes('memorandum'))return'tangible_property_memo';return'other';}
+function formatFileSize(b){if(b<1024)return b+' B';if(b<1048576)return(b/1024).toFixed(1)+' KB';return(b/1048576).toFixed(1)+' MB';}
+function renderQueue(){docQueueList.querySelectorAll('.doc-item').forEach(el=>el.remove());if(!queuedDocuments.length){docQueueEmpty.style.display='block';}else{docQueueEmpty.style.display='none';queuedDocuments.forEach((doc,i)=>{const el=document.createElement('div');el.className='doc-item';const statusHTML=doc.classifying?'<span style="font-size:0.75rem;color:var(--color-navy);font-style:italic">🔍 Identifying...</span>':doc.classificationReason?'<span style="font-size:0.75rem;color:var(--color-ink-muted)" title="'+doc.classificationReason+'">AI: '+(doc.classificationConfidence||'')+' confidence</span>':'';el.innerHTML='<div class="doc-item-number">'+(i+1)+'</div><div class="doc-item-info"><div class="doc-item-name">'+doc.name+'</div><div class="doc-item-meta">'+formatFileSize(doc.file.size)+(statusHTML?' • '+statusHTML:'')+'</div></div><div class="doc-item-type">'+typeSelectHTML(doc.type)+'</div><button class="doc-item-remove" data-index="'+i+'" title="Remove">✕</button>';el.querySelector('.doc-type-select').addEventListener('change',e=>{queuedDocuments[i].type=e.target.value;queuedDocuments[i].classificationReason='Manually selected';queuedDocuments[i].classificationConfidence='';renderQueue();});el.querySelector('.doc-item-remove').addEventListener('click',e=>{e.stopPropagation();queuedDocuments.splice(i,1);renderQueue();});docQueueList.appendChild(el);});}docCount.textContent=queuedDocuments.length+' document'+(queuedDocuments.length!==1?'s':'');analyzeBtn.disabled=queuedDocuments.length<2;}
+async function addFiles(files){const validExts=['pdf','docx','doc','txt'];const newDocs=[];for(const file of files){if(queuedDocuments.length+newDocs.length>=10){alert('Maximum 10 documents.');break;}const ext=file.name.split('.').pop().toLowerCase();if(!validExts.includes(ext)){alert('Unsupported: '+file.name);continue;}const doc={file,name:file.name,type:'other',text:null,classifying:true,classificationReason:null,classificationConfidence:null};newDocs.push(doc);queuedDocuments.push(doc);}renderQueue();if(!newDocs.length)return;
+// Extract text from all new files first
+for(const doc of newDocs){try{doc.text=await extractText(doc.file);}catch(err){doc.text='';doc.classifying=false;doc.type=guessType(doc.name);doc.classificationReason='Fallback: could not extract text';renderQueue();}}
+// Batch classify all docs that have text
+const toClassify=newDocs.filter(d=>d.text&&d.text.trim().length>=30);if(!toClassify.length){newDocs.forEach(d=>{d.classifying=false;d.type=guessType(d.name);d.classificationReason='Fallback: insufficient text';});renderQueue();return;}
+try{const resp=await fetch('/api/classify-documents',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({documents:toClassify.map(d=>({filename:d.name,text:d.text}))})});const data=await resp.json();if(data.results){toClassify.forEach((doc,i)=>{const r=data.results[i]||{};doc.type=r.type||guessType(doc.name);doc.classifying=false;doc.classificationReason=r.reason||'Classified by AI';doc.classificationConfidence=r.confidence||'';});}}catch(err){console.warn('Classification failed, using filename fallback:',err);toClassify.forEach(d=>{d.classifying=false;d.type=guessType(d.name);d.classificationReason='Fallback: classification service unavailable';});}
+// Handle any docs that weren't in toClassify
+newDocs.filter(d=>d.classifying).forEach(d=>{d.classifying=false;d.type=guessType(d.name);d.classificationReason='Fallback: insufficient text';});
+renderQueue();}
+fileInput.addEventListener('change',e=>{if(e.target.files.length)addFiles(Array.from(e.target.files));fileInput.value='';});
+addDocsArea.addEventListener('click',e=>{if(e.target.tagName!=='LABEL'&&!e.target.closest('label'))fileInput.click();});
+addDocsArea.addEventListener('dragover',e=>{e.preventDefault();addDocsArea.classList.add('drag-over');});
+addDocsArea.addEventListener('dragleave',e=>{e.preventDefault();addDocsArea.classList.remove('drag-over');});
+addDocsArea.addEventListener('drop',e=>{e.preventDefault();addDocsArea.classList.remove('drag-over');if(e.dataTransfer.files.length)addFiles(Array.from(e.dataTransfer.files));});
+document.querySelectorAll('.report-header').forEach(h=>{h.addEventListener('click',()=>h.parentElement.classList.toggle('expanded'));});
+document.getElementById('newAnalysisBtn').addEventListener('click',()=>{resultsSection.classList.remove('visible');document.getElementById('uploadSection').style.display='block';queuedDocuments=[];analysisResult=null;renderQueue();window.scrollTo({top:0,behavior:'smooth'});});
+async function extractText(file){const ext=file.name.split('.').pop().toLowerCase();if(ext==='txt')return await file.text();if(ext==='pdf'){const ab=await file.arrayBuffer();const pdf=await pdfjsLib.getDocument({data:ab}).promise;let t='';for(let i=1;i<=pdf.numPages;i++){const p=await pdf.getPage(i);const c=await p.getTextContent();t+=c.items.map(x=>x.str).join(' ')+'\n';}return t;}if(ext==='docx'||ext==='doc'){const ab=await file.arrayBuffer();return(await mammoth.extractRawText({arrayBuffer:ab})).value;}throw new Error('Unsupported: '+ext);}
+analyzeBtn.addEventListener('click',startSuiteAnalysis);
+async function startSuiteAnalysis(){if(queuedDocuments.length<2)return;errorMessage.classList.remove('visible');resultsSection.classList.remove('visible');progressSection.classList.add('visible');analyzeBtn.disabled=true;document.getElementById('uploadSection').style.display='none';const pBar=document.getElementById('progressBar'),pMsg=document.getElementById('progressMessage'),pDet=document.getElementById('progressDetail');
+try{pMsg.textContent='Preparing documents...';pBar.style.width='5%';
+// Extract text for any docs that don't have it yet (shouldn't happen normally, but safety net)
+for(let i=0;i<queuedDocuments.length;i++){if(!queuedDocuments[i].text){pDet.textContent='Extracting '+queuedDocuments[i].name+'...';try{queuedDocuments[i].text=await extractText(queuedDocuments[i].file);}catch(err){queuedDocuments[i].text='';}}}
+const validDocs=queuedDocuments.filter(d=>d.text&&d.text.trim().length>=50);if(validDocs.length<2)throw new Error('At least 2 documents must have readable content.');
+pMsg.textContent='Sending to analysis engine...';pBar.style.width='10%';
+const response=await fetch('/api/analyze-suite',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({documents:validDocs.map(d=>({name:d.name,type:d.type,text:d.text})),specialConsiderations:document.getElementById('suiteConsiderations').value.trim()})});
+if(!response.ok){const err=await response.json().catch(()=>({}));throw new Error(err.error||'Analysis failed');}
+const reader=response.body.getReader();const decoder=new TextDecoder();let buffer='',finalResult=null,serverError=null;
+while(true){const{done,value}=await reader.read();if(done)break;buffer+=decoder.decode(value);const lines=buffer.split('\n');buffer=lines.pop();
+for(const line of lines){if(line.startsWith('data:')){try{const data=JSON.parse(line.slice(5));if(data.phase){const pct=Math.round((data.step/data.totalSteps)*100);pBar.style.width=Math.max(10,pct)+'%';pMsg.textContent=data.message||'Processing...';pDet.textContent='Step '+data.step+' of '+data.totalSteps;}if(data.result)finalResult=data.result;if(data.error)serverError=data.error;}catch(e){}}}}
+if(serverError)throw new Error(serverError);if(!finalResult)throw new Error('No result received. Server may have timed out.');
+analysisResult=finalResult;displaySuiteResults(finalResult);
+}catch(error){console.error('Suite error:',error);document.getElementById('errorText').textContent=error.message;errorMessage.classList.add('visible');document.getElementById('uploadSection').style.display='block';}finally{progressSection.classList.remove('visible');analyzeBtn.disabled=queuedDocuments.length<2;}}
+function getGrade(s){if(s>=90)return'Excellent';if(s>=80)return'Well Coordinated';if(s>=70)return'Adequate';if(s>=60)return'Needs Attention';return'Critical Issues';}
+function getScoreColor(s){if(s>=80)return'#2d6a4f';if(s>=60)return'#b8860b';return'#9b2226';}
+function fmt(text){if(!text)return'';return'<p>'+text.replace(/^### (.+)$/gm,'</p><h4>$1</h4><p>').replace(/^## (.+)$/gm,'</p><h4>$1</h4><p>').replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>').replace(/\n\n/g,'</p><p>').replace(/\n/g,'<br>')+'</p>';}
+function displaySuiteResults(r){
+document.getElementById('overallScore').textContent=r.overallCoordinationScore||'--';
+document.getElementById('scoreGrade').textContent=getGrade(r.overallCoordinationScore);
+document.getElementById('scoreSummary').textContent=(r.documentCount||0)+' documents analyzed'+(r.overallAssessment?' • '+r.overallAssessment.replace(/-/g,' '):'');
+const badges=document.getElementById('scoreBadges');badges.innerHTML='';
+if(r.documentSummaries)r.documentSummaries.filter(d=>!d.error).forEach(d=>{badges.innerHTML+='<span class="score-badge">'+d.typeLabel+'</span>';});
+// Executive Summary
+let execHTML='';if(r.executiveSummary)execHTML=fmt(r.executiveSummary);if(r.keyTakeaways&&r.keyTakeaways.length){execHTML+='<h4>Key Takeaways</h4><ul>';r.keyTakeaways.forEach(t=>execHTML+='<li>'+t+'</li>');execHTML+='</ul>';}
+document.getElementById('executiveSummaryContent').innerHTML=execHTML||'<p>Summary not available.</p>';
+// Coordination Scores
+let coordHTML='<div class="coord-scores-grid">';const scores=r.coordinationScores||{};
+Object.entries(scores).forEach(([cat,data])=>{const sc=data.score||0;const col=getScoreColor(sc);coordHTML+='<div class="coord-score-card"><div class="coord-score-header"><div class="coord-score-name">'+cat+'</div><div class="coord-score-value" style="color:'+col+'">'+sc+'</div></div><div class="coord-score-bar"><div class="coord-score-fill" style="width:'+sc+'%;background:'+col+';"></div></div><div class="coord-score-findings">'+(data.findings||[]).slice(0,2).join(' • ')+'</div></div>';});
+coordHTML+='</div>';document.getElementById('coordScoresContent').innerHTML=coordHTML;
+// Conflicts & Issues
+let conflictsHTML='';const allIssues=[...(r.criticalConflicts||[]),...(r.coordinationIssues||[])];
+if(allIssues.length){allIssues.sort((a,b)=>{const o={critical:0,important:1,advisory:2,minor:3};return(o[a.severity]||3)-(o[b.severity]||3);});allIssues.forEach(issue=>{const sev=issue.severity||'minor';const docs=issue.documents||issue.affectedDocuments||[];conflictsHTML+='<div class="issue-item '+sev+'"><div class="issue-header"><span class="issue-title">'+(issue.title||issue.issue||'Issue')+'</span><span class="issue-severity '+sev+'">'+sev+'</span></div><div class="issue-description">'+(issue.description||'')+(issue.resolution||issue.recommendation?'<br><strong>Resolution:</strong> '+(issue.resolution||issue.recommendation):'')+'</div>'+(docs.length?'<div class="issue-docs">Affects: '+docs.join(', ')+'</div>':'')+'</div>';});}else{conflictsHTML='<p>No critical conflicts identified.</p>';}
+document.getElementById('conflictsContent').innerHTML=conflictsHTML;
+// Fiduciary Map
+let fidHTML='';const fidMap=r.fiduciaryMap||{};const fidCats=[['trustees','Trustees'],['agents','Agents (POA)'],['executors','Executors'],['protectors','Trust Protectors'],['healthcareAgents','Healthcare Decision-Makers']];
+fidCats.forEach(([cat,label])=>{const people=fidMap[cat]||[];if(people.length){fidHTML+='<h4>'+label+'</h4><div class="fid-map-grid">';people.forEach(p=>{fidHTML+='<div class="fid-map-card"><div class="fid-map-name">'+p.name+'</div><div class="fid-map-roles">'+(p.documents||[]).map((d,i)=>'<div class="fid-map-role-item"><span class="fid-map-doc-badge">'+d+'</span> <span>'+((p.roles||[])[i]||'')+'</span></div>').join('')+'</div></div>';});fidHTML+='</div>';}});
+if(fidMap.inconsistencies&&fidMap.inconsistencies.length){fidHTML+='<h4>⚠ Inconsistencies</h4><ul>';fidMap.inconsistencies.forEach(i=>fidHTML+='<li>'+i+'</li>');fidHTML+='</ul>';}
+document.getElementById('fiduciaryMapContent').innerHTML=fidHTML||'<p>Not available.</p>';
+// Beneficiary Map
+let benHTML='';const bm=r.beneficiaryMap||{};if(bm.beneficiaries&&bm.beneficiaries.length){benHTML+='<div class="fid-map-grid">';bm.beneficiaries.forEach(b=>{benHTML+='<div class="fid-map-card"><div class="fid-map-name">'+b.name+'</div><div class="fid-map-roles">'+(b.documents||[]).map((d,i)=>'<div class="fid-map-role-item"><span class="fid-map-doc-badge">'+d+'</span> <span>'+((b.provisions||[])[i]||'')+'</span></div>').join('')+'</div></div>';});benHTML+='</div>';}
+if(bm.inconsistencies&&bm.inconsistencies.length){benHTML+='<h4>⚠ Inconsistencies</h4><ul>';bm.inconsistencies.forEach(i=>benHTML+='<li>'+i+'</li>');benHTML+='</ul>';}
+if(bm.disinheritedOrOmitted&&bm.disinheritedOrOmitted.length){benHTML+='<h4>⚠ Potentially Omitted</h4><ul>';bm.disinheritedOrOmitted.forEach(d=>benHTML+='<li>'+d+'</li>');benHTML+='</ul>';}
+document.getElementById('beneficiaryMapContent').innerHTML=benHTML||'<p>Not available.</p>';
+// Scenario Analysis
+let scHTML='';const sc=r.scenarioAnalysis||{};const scTypes=[{key:'uponFirstDeath',label:'Upon First Death',icon:'⚫'},{key:'uponSecondDeath',label:'Upon Second Death',icon:'⚫'},{key:'uponIncapacity',label:'Upon Incapacity',icon:'🔶'}];
+scHTML+='<div class="scenario-tabs">';scTypes.forEach((s,i)=>{scHTML+='<button class="scenario-tab'+(i===0?' active':'')+'" data-scenario="'+s.key+'">'+s.icon+' '+s.label+'</button>';});scHTML+='</div>';
+scTypes.forEach((s,i)=>{const d=sc[s.key]||{};scHTML+='<div class="scenario-content'+(i===0?' active':'')+'" id="scenario-'+s.key+'">';if(d.sequence&&d.sequence.length){scHTML+='<h4>Sequence of Events</h4><ol>';d.sequence.forEach(step=>scHTML+='<li>'+step+'</li>');scHTML+='</ol>';}if(d.documentsThatActivate&&d.documentsThatActivate.length){scHTML+='<h4>Documents That Activate</h4><ul>';d.documentsThatActivate.forEach(x=>scHTML+='<li>'+x+'</li>');scHTML+='</ul>';}if(d.potentialIssues&&d.potentialIssues.length){scHTML+='<h4>⚠ Potential Issues</h4><ul>';d.potentialIssues.forEach(p=>scHTML+='<li>'+p+'</li>');scHTML+='</ul>';}if(!d.sequence&&!d.potentialIssues)scHTML+='<p>Not available for this event.</p>';scHTML+='</div>';});
+document.getElementById('scenarioContent').innerHTML=scHTML;
+document.querySelectorAll('.scenario-tab').forEach(tab=>{tab.addEventListener('click',()=>{document.querySelectorAll('.scenario-tab').forEach(t=>t.classList.remove('active'));document.querySelectorAll('.scenario-content').forEach(c=>c.classList.remove('active'));tab.classList.add('active');document.getElementById('scenario-'+tab.dataset.scenario).classList.add('active');});});
+// Tax Coordination
+let taxHTML='';const tax=r.taxCoordinationSummary||{};if(tax.overallStrategy)taxHTML+='<p><strong>Overall Strategy:</strong> '+tax.overallStrategy+'</p>';if(tax.estateStrategyEffectiveness)taxHTML+='<p><strong>Estate Tax Strategy:</strong> '+tax.estateStrategyEffectiveness+'</p>';if(tax.gstPlanning)taxHTML+='<p><strong>GST Planning:</strong> '+tax.gstPlanning+'</p>';if(tax.incomeTaxConsiderations)taxHTML+='<p><strong>Income Tax:</strong> '+tax.incomeTaxConsiderations+'</p>';
+if(tax.opportunities&&tax.opportunities.length){taxHTML+='<h4>Opportunities</h4><ul>';tax.opportunities.forEach(o=>taxHTML+='<li>'+o+'</li>');taxHTML+='</ul>';}
+if(tax.risks&&tax.risks.length){taxHTML+='<h4>⚠ Tax Risks</h4><ul>';tax.risks.forEach(x=>taxHTML+='<li>'+x+'</li>');taxHTML+='</ul>';}
+document.getElementById('taxCoordContent').innerHTML=taxHTML||'<p>Not available.</p>';
+// Missing Documents
+let missingHTML='';if(r.missingDocuments&&r.missingDocuments.length){r.missingDocuments.forEach(d=>{const sev=d.priority||'advisory';missingHTML+='<div class="issue-item '+sev+'"><div class="issue-header"><span class="issue-title">'+d.document+'</span><span class="issue-severity '+sev+'">'+sev+'</span></div><div class="issue-description">'+(d.reason||'')+'</div></div>';});}else{missingHTML='<p>No critical missing documents identified.</p>';}
+document.getElementById('missingDocsContent').innerHTML=missingHTML;
+// Document Timeline
+let tlHTML='';if(r.documentTimeline&&r.documentTimeline.length){r.documentTimeline.sort((a,b)=>(a.executionDate||'').localeCompare(b.executionDate||''));r.documentTimeline.forEach(d=>{const cls=d.needsUpdate?(parseInt(d.ageYears)>10?'outdated':'needs-update'):'current';const lbl=d.needsUpdate?(parseInt(d.ageYears)>10?'Outdated':'Update Recommended'):'Current';tlHTML+='<div style="display:flex;align-items:center;gap:1rem;padding:0.75rem 0;border-bottom:1px solid var(--color-parchment-dark)"><div style="font-family:var(--font-display);font-size:1.1rem;font-weight:600;min-width:80px;color:var(--color-navy)">'+(d.executionDate||'Unknown')+'</div><div style="flex:1;font-weight:500;font-size:0.9rem">'+d.document+(d.lastAmended&&d.lastAmended!=='N/A'?' <span style="font-size:0.8rem;color:var(--color-ink-muted)">(amended '+d.lastAmended+')</span>':'')+'</div><div style="font-size:0.75rem;font-weight:600;padding:0.2rem 0.6rem;border-radius:8px" class="issue-severity '+cls+'">'+lbl+'</div></div>';});}else{tlHTML='<p>Timeline not available.</p>';}
+document.getElementById('timelineContent').innerHTML=tlHTML;
+// Recommendations
+let recHTML='';if(r.recommendations&&r.recommendations.length){r.recommendations.forEach((rec,i)=>{const sev=rec.priority||'advisory';const docs=rec.affectedDocuments||[];recHTML+='<div class="issue-item '+sev+'"><div class="issue-header"><span class="issue-title">'+(i+1)+'. '+(rec.title||'Recommendation')+'</span><span class="issue-severity '+sev+'">'+sev+'</span></div><div class="issue-description">'+(rec.description||'')+(rec.urgency?' <em>('+rec.urgency+')</em>':'')+'</div>'+(docs.length?'<div class="issue-docs">Affects: '+docs.join(', ')+'</div>':'')+'</div>';});}else{recHTML='<p>No recommendations.</p>';}
+document.getElementById('recommendationsContent').innerHTML=recHTML;
+// Matrix
+let mxHTML='';const mx=r.actionPrioritizationMatrix||{};if(mx.doNow||mx.planFor||mx.quickWins||mx.consider){mxHTML='<div class="priority-matrix"><div class="matrix-quadrant do-now"><div class="matrix-title">🔴 Do Now</div><ul class="matrix-items">'+(mx.doNow||[]).map(i=>'<li><strong>'+i.item+'</strong>: '+(i.reason||'')+'</li>').join('')+'</ul></div><div class="matrix-quadrant plan-for"><div class="matrix-title">🟡 Plan For</div><ul class="matrix-items">'+(mx.planFor||[]).map(i=>'<li><strong>'+i.item+'</strong>: '+(i.reason||'')+'</li>').join('')+'</ul></div><div class="matrix-quadrant quick-wins"><div class="matrix-title">🟢 Quick Wins</div><ul class="matrix-items">'+(mx.quickWins||[]).map(i=>'<li><strong>'+i.item+'</strong>: '+(i.reason||'')+'</li>').join('')+'</ul></div><div class="matrix-quadrant consider"><div class="matrix-title">⚪ Consider</div><ul class="matrix-items">'+(mx.consider||[]).map(i=>'<li><strong>'+i.item+'</strong>: '+(i.reason||'')+'</li>').join('')+'</ul></div></div>';}else{mxHTML='<p>Not available.</p>';}
+document.getElementById('matrixContent').innerHTML=mxHTML;
+// Attorney Questions
+let aqHTML='';if(r.questionsForAttorney&&r.questionsForAttorney.length){r.questionsForAttorney.forEach(q=>{const pri=q.priority||'medium';aqHTML+='<div class="issue-item '+(pri==='high'?'important':'advisory')+'"><div class="issue-header"><span class="issue-title">'+q.question+'</span><span class="issue-severity '+(pri==='high'?'important':'advisory')+'">'+pri+'</span></div><div class="issue-description">'+(q.context||'')+'</div>'+(q.relatedDocuments?'<div class="issue-docs">Related: '+q.relatedDocuments.join(', ')+'</div>':'')+'</div>';});}else{aqHTML='<p>No specific questions generated.</p>';}
+document.getElementById('attorneyQuestionsContent').innerHTML=aqHTML;
+// Individual Document Summaries
+let dsHTML='';if(r.documentSummaries){r.documentSummaries.forEach(d=>{if(d.error){dsHTML+='<div class="issue-item critical"><div class="issue-title">'+d.name+' ('+d.typeLabel+')</div><div class="issue-description">Error: '+d.error+'</div></div>';return;}const s=d.summary||{};dsHTML+='<h4>'+d.name+' — '+d.typeLabel+'</h4>';
+if(s.executionDate)dsHTML+='<p><strong>Executed:</strong> '+s.executionDate+(s.governingLaw?' • <strong>Governing Law:</strong> '+s.governingLaw:'')+'</p>';
+if(s.keyParties){const kp=s.keyParties;if(kp.grantor)dsHTML+='<p><strong>Grantor/Principal:</strong> '+kp.grantor+'</p>';if(kp.trustees&&kp.trustees.length)dsHTML+='<p><strong>Trustees:</strong> '+kp.trustees.join(', ')+'</p>';if(kp.beneficiaries&&kp.beneficiaries.length)dsHTML+='<p><strong>Beneficiaries:</strong> '+kp.beneficiaries.join(', ')+'</p>';if(kp.agents&&kp.agents.length)dsHTML+='<p><strong>Agents:</strong> '+kp.agents.join(', ')+'</p>';}
+if(s.distributionScheme)dsHTML+='<p><strong>Distribution:</strong> '+s.distributionScheme+'</p>';
+if(s.potentialIssues&&s.potentialIssues.length){dsHTML+='<p><strong>Issues Found:</strong></p><ul>';s.potentialIssues.forEach(i=>dsHTML+='<li>['+(i.severity||'minor').toUpperCase()+'] '+i.issue+'</li>');dsHTML+='</ul>';}
+dsHTML+='<hr style="border:none;border-top:1px solid var(--color-parchment-dark);margin:1rem 0">';});}
+document.getElementById('docSummariesContent').innerHTML=dsHTML||'<p>Not available.</p>';
+// Plan Strengths
+let strHTML='';if(r.planStrengths&&r.planStrengths.length){r.planStrengths.forEach(s=>{strHTML+='<div class="issue-item advisory"><div class="issue-title">'+s.strength+'</div><div class="issue-description">'+(s.significance||'')+(s.documents?' <em>('+s.documents.join(', ')+')</em>':'')+'</div></div>';});}else{strHTML='<p>Strengths analysis not available.</p>';}
+document.getElementById('strengthsContent').innerHTML=strHTML;
+// Show results
+resultsSection.classList.add('visible');resultsSection.scrollIntoView({behavior:'smooth',block:'start'});}
+// PDF Download
+document.getElementById('downloadPdfBtn').addEventListener('click',async function(){if(!analysisResult)return;const btn=this;btn.disabled=true;btn.textContent='Generating PDF...';
+try{const{jsPDF}=window.jspdf;const doc=new jsPDF({orientation:'portrait',unit:'mm',format:'a4'});const pw=210,ph=297,m=15,cw=pw-2*m;let y=20;
+function checkPage(need){if(y+need>ph-20){doc.addPage();y=20;}}
+function addTitle(t){doc.setFontSize(18);doc.setFont('helvetica','bold');doc.setTextColor(30,58,95);doc.text(t,pw/2,y,{align:'center'});y+=10;}
+function addSH(t){checkPage(12);doc.setFontSize(12);doc.setFont('helvetica','bold');doc.setTextColor(30,58,95);doc.text(t,m,y);y+=7;}
+function addP(t,indent){checkPage(8);doc.setFontSize(9);doc.setFont('helvetica','normal');doc.setTextColor(26,26,46);const lines=doc.splitTextToSize(t,cw-(indent||0));lines.forEach(l=>{checkPage(5);doc.text(l,m+(indent||0),y);y+=4.5;});y+=2;}
+function addBullet(t){checkPage(8);doc.setFontSize(9);doc.text('•',m+2,y);const lines=doc.splitTextToSize(t,cw-8);lines.forEach((l,i)=>{checkPage(5);doc.text(l,m+8,y);y+=4.5;});y+=1;}
+addTitle('ESTATE PLAN SUITE REVIEW');y+=2;doc.setFontSize(10);doc.setFont('helvetica','normal');doc.setTextColor(100,100,100);doc.text('Generated by EstateView AI — '+new Date().toLocaleDateString(),pw/2,y,{align:'center'});y+=6;doc.text('Overall Coordination Score: '+(analysisResult.overallCoordinationScore||'--')+'/100',pw/2,y,{align:'center'});y+=10;
+if(analysisResult.executiveSummary){addSH('EXECUTIVE SUMMARY');addP(analysisResult.executiveSummary.replace(/<[^>]*>/g,'').replace(/\*\*/g,''));}
+if(analysisResult.keyTakeaways&&analysisResult.keyTakeaways.length){addSH('KEY TAKEAWAYS');analysisResult.keyTakeaways.forEach(t=>addBullet(t));}
+const allIssuesP=[...(analysisResult.criticalConflicts||[]),...(analysisResult.coordinationIssues||[])];if(allIssuesP.length){addSH('CRITICAL CONFLICTS & ISSUES');allIssuesP.forEach(i=>{addP('['+(i.severity||'minor').toUpperCase()+'] '+(i.title||i.issue||''));if(i.description)addP(i.description,5);if(i.resolution||i.recommendation)addP('Resolution: '+(i.resolution||i.recommendation),5);y+=2;});}
+if(analysisResult.recommendations&&analysisResult.recommendations.length){addSH('RECOMMENDATIONS');analysisResult.recommendations.forEach((r,i)=>{addP((i+1)+'. ['+(r.priority||'advisory').toUpperCase()+'] '+(r.title||''));if(r.description)addP(r.description,5);y+=2;});}
+if(analysisResult.missingDocuments&&analysisResult.missingDocuments.length){addSH('MISSING DOCUMENTS');analysisResult.missingDocuments.forEach(d=>{addBullet('['+(d.priority||'advisory').toUpperCase()+'] '+d.document+': '+(d.reason||''));});}
+const tp=doc.internal.getNumberOfPages();for(let i=1;i<=tp;i++){doc.setPage(i);doc.setDrawColor(200,200,200);doc.line(m,ph-15,pw-m,ph-15);doc.setFontSize(7);doc.setTextColor(128,128,128);doc.text('EstateView AI Suite Review — For informational purposes only.',m,ph-10);doc.text('Page '+i+' of '+tp,pw-m-20,ph-10);}
+doc.save('Estate_Plan_Suite_Review_'+new Date().toISOString().split('T')[0]+'.pdf');
+}catch(err){console.error('PDF error:',err);alert('PDF generation failed.');}finally{btn.disabled=false;btn.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>Download PDF Report';}});
+});
+</script>
+</body>
+</html>
