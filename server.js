@@ -9,6 +9,20 @@ import { Document, Packer, Paragraph, TextRun, HeadingLevel, AlignmentType,
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
 
+// Helper: extract and parse JSON from Claude responses (strips markdown fences)
+function extractJSON(text, fallback) {
+  if (fallback === undefined) fallback = {};
+  if (!text) return fallback;
+  var cleaned = text.replace(/```json/g, '').replace(/```/g, '').trim();
+  try {
+    var s = cleaned.indexOf('{'); var e = cleaned.lastIndexOf('}');
+    if (s !== -1 && e > s) return JSON.parse(cleaned.substring(s, e + 1));
+  } catch (e1) {}
+  try { var m = text.match(/\{[\s\S]*\}/); if (m) return JSON.parse(m[0]); } catch (e2) {}
+  return fallback;
+}
+
+
 app.use(express.json({ limit: '50mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 
@@ -456,11 +470,11 @@ Return your analysis as JSON with the following comprehensive structure:
 Be thorough and extract all relevant information. Include confidence levels where information is inferred rather than explicit. If information is not present in the document, indicate "Not specified" for that field.` }]
     });
     
-    let documentSummary = {};
-    try {
-      const match = sum.content[0].text.match(/\{[\s\S]*\}/);
-      documentSummary = JSON.parse(match ? match[0] : '{}');
-    } catch {
+    let documentSummary = extractJSON(sum.content[0].text);
+
+
+
+
       documentSummary = { rawSummary: sum.content[0].text };
     }
     const summary = sum.content[0].text;
@@ -789,6 +803,7 @@ app.post('/api/classify-document', async (req, res) => {
     const response = await anthropic.messages.create({
       model: 'claude-sonnet-4-5',
       max_tokens: 200,
+      system: 'You are a JSON API. Output only raw JSON. No markdown fences, no ``` blocks, no preamble or explanation text.',
       messages: [{ role: 'user', content: `Classify this estate planning document based on its content. Choose the single best match from the list below.
 
 DOCUMENT TYPES:
@@ -844,6 +859,7 @@ app.post('/api/classify-documents', async (req, res) => {
     const response = await anthropic.messages.create({
       model: 'claude-sonnet-4-5',
       max_tokens: 1000,
+      system: 'You are a JSON API. Respond with raw JSON only. No markdown, no code blocks, no explanation.',
       messages: [{ role: 'user', content: `Classify each of these ${documents.length} estate planning documents based on their content. Choose the single best match from the list below for each.
 
 DOCUMENT TYPES:
@@ -859,8 +875,8 @@ Return exactly ${documents.length} results in the same order as the documents ab
 
     let parsed = { results: [] };
     try {
-      const match = response.content[0].text.match(/\{[\s\S]*\}/);
-      if (match) parsed = JSON.parse(match[0]);
+
+      parsed = extractJSON(response.content[0].text);
       // Validate all types
       if (parsed.results) {
         parsed.results = parsed.results.map(r => ({
@@ -940,6 +956,7 @@ app.post('/api/analyze-suite', async (req, res) => {
         const sumResponse = await anthropic.messages.create({
           model: 'claude-sonnet-4-5',
           max_tokens: 6000,
+          system: 'You are a JSON API. Output only raw JSON. No markdown fences, no ``` blocks, no preamble or explanation text.',
           messages: [{ role: 'user', content: `You are an expert estate planning attorney. Provide a structured summary of this estate planning document for use in a cross-document coordination review.
 
 DOCUMENT NAME: ${doc.name || 'Unknown'}
@@ -1001,11 +1018,11 @@ Return your analysis as JSON:
 Be thorough. Flag anything that might create coordination issues with other estate planning documents.` }]
         });
 
-        let parsed = {};
-        try {
-          const match = sumResponse.content[0].text.match(/\{[\s\S]*\}/);
-          parsed = JSON.parse(match ? match[0] : '{}');
-        } catch {
+        let parsed = extractJSON(sumResponse.content[0].text);
+
+
+
+
           parsed = { rawSummary: sumResponse.content[0].text };
         }
 
@@ -1051,6 +1068,7 @@ Be thorough. Flag anything that might create coordination issues with other esta
     const coordResponse = await anthropic.messages.create({
       model: 'claude-sonnet-4-5',
       max_tokens: 8192,
+      system: 'You are a JSON API. Output only raw JSON. No markdown fences, no ``` blocks, no preamble or explanation text.',
       messages: [{ role: 'user', content: `You are an expert estate planning attorney conducting a comprehensive cross-document coordination review of an estate plan suite. You have summaries of ${validSummaries.length} documents. Analyze how these documents work together as a coordinated estate plan.
 
 SPECIAL CONSIDERATIONS FROM CLIENT: ${specialConsiderations || 'None specified'}
@@ -1108,11 +1126,11 @@ Return your analysis as JSON:
 Be specific and reference actual document names and provisions. Focus on actionable findings.` }]
     });
 
-    let coordinationData = {};
-    try {
-      const match = coordResponse.content[0].text.match(/\{[\s\S]*\}/);
-      coordinationData = JSON.parse(match ? match[0] : '{}');
-    } catch {
+    let coordinationData = extractJSON(coordResponse.content[0].text);
+
+
+
+
       coordinationData = { rawAnalysis: coordResponse.content[0].text };
     }
 
@@ -1131,6 +1149,7 @@ Be specific and reference actual document names and provisions. Focus on actiona
     const reportResponse = await anthropic.messages.create({
       model: 'claude-sonnet-4-5',
       max_tokens: 8192,
+      system: 'You are a JSON API. Output only raw JSON. No markdown fences, no ``` blocks, no preamble or explanation text.',
       messages: [{ role: 'user', content: `Generate a comprehensive estate plan suite review report based on the cross-document coordination analysis.
 
 DOCUMENTS REVIEWED: ${validSummaries.map(d => `${d.name} (${d.typeLabel})`).join(', ')}
@@ -1201,11 +1220,11 @@ Generate a report as JSON:
 Be thorough, specific, and practical. Reference specific documents by name throughout.` }]
     });
 
-    let suiteReport = {};
-    try {
-      const match = reportResponse.content[0].text.match(/\{[\s\S]*\}/);
-      suiteReport = JSON.parse(match ? match[0] : '{}');
-    } catch {
+    let suiteReport = extractJSON(reportResponse.content[0].text);
+
+
+
+
       suiteReport = { executiveSummary: { fullSummary: reportResponse.content[0].text } };
     }
 
@@ -1357,11 +1376,11 @@ Limit to 15-20 most important revisions. Write replacement text in professional 
       }]
     });
 
-    let revisions = { revisions: [], newSections: [] };
-    try {
-      const match = revisionPrompt.content[0].text.match(/\{[\s\S]*\}/);
-      revisions = JSON.parse(match ? match[0] : '{}');
-    } catch (e) {
+    let revisions = extractJSON(revisionPrompt.content[0].text);
+
+
+
+
       console.error('Failed to parse revisions:', e);
     }
 
