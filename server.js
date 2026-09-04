@@ -102,7 +102,22 @@ async function createMessage(client, params) {
   try {
     return await client.messages.create(params2);
   } catch (err) {
-    const missingModel = err && (err.status === 404 || /not_found_error/i.test(err.message || ''));
+    // A parameter this model no longer accepts (temperature was deprecated this
+    // way) is a 400 that names the offending key. Drop it and retry rather than
+    // failing the whole analysis.
+    const msg = (err && err.message) || '';
+    if (err && err.status === 400 && /invalid_request_error/i.test(msg)) {
+      const named = msg.match(/[`'"](\w+)[`'"]\s+is\s+(?:deprecated|not supported|unsupported)/i)
+                 || msg.match(/unexpected\s+(?:keyword\s+)?(?:argument|parameter)\s+[`'"]?(\w+)/i);
+      const key = named && named[1];
+      if (key && key in params2) {
+        console.warn(`[claude] API rejected parameter "${key}" for ${model}; retrying without it`);
+        const stripped = { ...params2 };
+        delete stripped[key];
+        return await client.messages.create(stripped);
+      }
+    }
+    const missingModel = err && (err.status === 404 || /not_found_error/i.test(msg));
     if (!missingModel || MODEL_PIN) throw err;
     console.warn(`[model] ${model} rejected as not found, re-resolving`);
     const fresh = await getModel(apiKey, true);
@@ -584,7 +599,6 @@ app.post('/api/analyze', async (req, res) => {
     send({ step: 2 });
     const sum = await createMessage(anthropic, {
       max_tokens: JSON_MAX_TOKENS,
-      temperature: 0, // scoring inputs must be reproducible run to run
       messages: [{ role: 'user', content: `You are an expert trust and estate attorney conducting a comprehensive trust document analysis. Analyze this trust document thoroughly.
 
 DOCUMENT TEXT:
@@ -688,7 +702,6 @@ Be thorough and extract all relevant information. Include confidence levels wher
     send({ step: 3 });
     const ev = await createMessage(anthropic, {
       max_tokens: JSON_MAX_TOKENS,
-      temperature: 0, // scoring inputs must be reproducible run to run
       messages: [{ role: 'user', content: `As an expert wealth planner and asset protection attorney, evaluate this trust document against the evaluation framework.
 
 DOCUMENT SUMMARY: ${summary}
