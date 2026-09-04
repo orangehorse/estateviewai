@@ -2,6 +2,7 @@ import express from 'express';
 import { fileURLToPath } from 'url';
 import path from 'path';
 import Anthropic from '@anthropic-ai/sdk';
+import crypto from 'crypto';
 import { Document, Packer, Paragraph, TextRun, HeadingLevel, AlignmentType, 
          Table, TableRow, TableCell, BorderStyle, WidthType, ShadingType,
          Header, Footer, PageNumber, PageBreak, InsertedTextRun, DeletedTextRun } from 'docx';
@@ -25,6 +26,18 @@ const MODEL_TTL_MS = 24 * 60 * 60 * 1000;
 // do not fit in 8192 output tokens; truncated JSON silently parses to {} and
 // produces an empty analysis. Clamped at request time to the model's own limit.
 const JSON_MAX_TOKENS = Number(process.env.CLAUDE_MAX_OUTPUT_TOKENS) || 32000;
+
+// How much of a document reaches the model. The old 100k cap silently dropped
+// roughly two thirds of a typical trust and the user was never told, so the
+// analysis read as complete when it was not. 400k characters is about 100k
+// tokens, which fits a full trust alongside the prompt. Anything beyond the cap
+// is still cut, but now it is reported in the result.
+const MAX_DOC_CHARS = Number(process.env.MAX_DOCUMENT_CHARS) || 400000;
+
+// Responses are far longer than they used to be, so the SDK's default timeout
+// is not generous enough; a stalled request should fail cleanly rather than
+// hanging the SSE stream open.
+const CLIENT_TIMEOUT_MS = Number(process.env.CLAUDE_TIMEOUT_MS) || 10 * 60 * 1000;
 
 let resolvedModel = MODEL_PIN || MODEL_FALLBACK;
 let resolvedAt = 0;
@@ -558,15 +571,20 @@ app.post('/api/analyze', async (req, res) => {
       send({ error: 'ANTHROPIC_API_KEY not configured' }); return res.end();
     }
 
-    const anthropic = new Anthropic({ apiKey });
-    const text = documentText.substring(0, 100000);
-    console.log(`[analyze] ${documentName || 'document'}: ${documentText.length} chars extracted, ${text.length} sent`);
+    const anthropic = new Anthropic({ apiKey, timeout: CLIENT_TIMEOUT_MS, maxRetries: 2 });
+    const text = documentText.substring(0, MAX_DOC_CHARS);
+    const documentTruncated = documentText.length > MAX_DOC_CHARS;
+    // Document names carry client names, and the privacy notice promises documents
+    // are not stored, so log a short digest rather than the filename.
+    const docTag = crypto.createHash('sha256').update(String(documentName || 'document')).digest('hex').slice(0, 8);
+    console.log(`[analyze] doc:${docTag}: ${documentText.length} chars extracted, ${text.length} sent${documentTruncated ? ' (TRUNCATED)' : ''}`);
     const attrList = ATTRIBUTES.map(a => `${a.id}. ${a.name} (Importance: ${a.imp}/10)`).join('\n');
 
     // Step 2: Comprehensive Document Summary with Enhanced Analysis
     send({ step: 2 });
     const sum = await createMessage(anthropic, {
       max_tokens: JSON_MAX_TOKENS,
+      temperature: 0, // scoring inputs must be reproducible run to run
       messages: [{ role: 'user', content: `You are an expert trust and estate attorney conducting a comprehensive trust document analysis. Analyze this trust document thoroughly.
 
 DOCUMENT TEXT:
@@ -670,6 +688,7 @@ Be thorough and extract all relevant information. Include confidence levels wher
     send({ step: 3 });
     const ev = await createMessage(anthropic, {
       max_tokens: JSON_MAX_TOKENS,
+      temperature: 0, // scoring inputs must be reproducible run to run
       messages: [{ role: 'user', content: `As an expert wealth planner and asset protection attorney, evaluate this trust document against the evaluation framework.
 
 DOCUMENT SUMMARY: ${summary}
@@ -716,6 +735,9 @@ Return JSON:
     const catScores = {};
     const confidenceByCategory = {};
     
+    const assessed = [];
+    const unassessed = [];
+    const notApplicable = [];
     Object.keys(CATEGORIES).forEach(cat => {
       const attrs = ATTRIBUTES.filter(a => a.cat === cat);
       let max = 0;
@@ -725,31 +747,49 @@ Return JSON:
       
       attrs.forEach(a => {
         const e = evalData.attributeScores?.find(x => x.id === a.id);
-        if (e) {
-          // Skip NOT_APPLICABLE items from scoring
-          if (e.status === 'NOT_APPLICABLE' || e.score === -1 || e.score === null) {
-            // Don't count this attribute in the score calculation
-            return;
-          }
-          max += a.imp;
-          actual += (e.score / 10) * a.imp;
-          if (e.confidence === 'HIGH') highConfCount++;
-          totalCount++;
-        } else {
-          // If no evaluation, include with 50% score
-          max += a.imp;
-          actual += 0.5 * a.imp;
+        if (!e) {
+          // The model did not return this attribute. Crediting it 50% used to
+          // blend invented data into the headline score, indistinguishable from
+          // a real assessment. Leave it out and report coverage instead.
+          unassessed.push(a.id);
+          return;
         }
+        if (e.status === 'NOT_APPLICABLE' || e.score === -1 || e.score === null) {
+          notApplicable.push(a.id);
+          return;
+        }
+        max += a.imp;
+        actual += (e.score / 10) * a.imp;
+        if (e.confidence === 'HIGH') highConfCount++;
+        totalCount++;
+        assessed.push(a.id);
       });
       
       // Avoid division by zero if all items are N/A
-      catScores[cat] = max > 0 ? Math.round((actual / max) * 100) : 0;
+      catScores[cat] = max > 0 ? Math.round((actual / max) * 100) : null;
       confidenceByCategory[cat] = totalCount > 0 ? Math.round((highConfCount / totalCount) * 100) : 50;
     });
 
+    // Weight only the categories that actually got scored, so an unscored
+    // category cannot drag the total down as if it had failed.
     let overall = 0;
-    Object.keys(CATEGORIES).forEach(c => { overall += catScores[c] * (CATEGORIES[c] / 100); });
-    overall = Math.round(overall);
+    let weightUsed = 0;
+    Object.keys(CATEGORIES).forEach(c => {
+      if (catScores[c] === null) return;
+      overall += catScores[c] * (CATEGORIES[c] / 100);
+      weightUsed += CATEGORIES[c] / 100;
+    });
+    overall = weightUsed > 0 ? Math.round(overall / weightUsed) : null;
+    const coverage = {
+      assessed: assessed.length,
+      notApplicable: notApplicable.length,
+      unassessed: unassessed.length,
+      total: ATTRIBUTES.length,
+      percent: Math.round((assessed.length + notApplicable.length) / ATTRIBUTES.length * 100)
+    };
+    if (unassessed.length) {
+      console.warn(`[score] model returned ${assessed.length + notApplicable.length}/${ATTRIBUTES.length} attributes; ${unassessed.length} unassessed and excluded from the score`);
+    }
 
     // Calculate document age and applicable law changes
     const executionYear = documentSummary.executionDate ? 
@@ -865,6 +905,12 @@ Be thorough, specific, and actionable. Prioritize practical guidance over genera
       overallScore: overall,
       categoryScores: catScores,
       confidenceByCategory: confidenceByCategory,
+
+      // How much of the framework and of the document this score is based on
+      coverage: coverage,
+      documentTruncated: documentTruncated,
+      documentChars: documentText.length,
+      documentCharsAnalyzed: text.length,
       
       // Executive summaries at different detail levels
       executiveSummary: asText(report.executiveSummary, rptText),
@@ -982,7 +1028,7 @@ app.post('/api/classify-document', async (req, res) => {
       return res.json({ type: 'other', confidence: 'low', reason: 'API not configured' });
     }
 
-    const anthropic = new Anthropic({ apiKey });
+    const anthropic = new Anthropic({ apiKey, timeout: CLIENT_TIMEOUT_MS, maxRetries: 2 });
     const snippet = text.substring(0, 3000);
     const typeList = SUITE_DOCUMENT_TYPES.map(t => `${t.id}: ${t.label}`).join('\n');
 
@@ -1033,7 +1079,7 @@ app.post('/api/classify-documents', async (req, res) => {
       return res.json({ results: documents.map(() => ({ type: 'other', confidence: 'low', reason: 'API not configured' })) });
     }
 
-    const anthropic = new Anthropic({ apiKey });
+    const anthropic = new Anthropic({ apiKey, timeout: CLIENT_TIMEOUT_MS, maxRetries: 2 });
     const typeList = SUITE_DOCUMENT_TYPES.map(t => `${t.id}: ${t.label}`).join('\n');
 
     // Build a combined prompt with snippets from all documents
@@ -1110,7 +1156,7 @@ app.post('/api/analyze-suite', async (req, res) => {
       return res.end();
     }
 
-    const anthropic = new Anthropic({ apiKey });
+    const anthropic = new Anthropic({ apiKey, timeout: CLIENT_TIMEOUT_MS, maxRetries: 2 });
     const totalDocs = documents.length;
 
     // ===== PHASE 1: Individual Document Summaries =====
@@ -1120,7 +1166,7 @@ app.post('/api/analyze-suite', async (req, res) => {
 
     for (let i = 0; i < documents.length; i++) {
       const doc = documents[i];
-      const text = (doc.text || '').substring(0, 80000);
+      const text = (doc.text || '').substring(0, MAX_DOC_CHARS);
       
       if (!text || text.length < 50) {
         documentSummaries.push({
@@ -1490,7 +1536,7 @@ app.post('/api/generate-redline', async (req, res) => {
       return res.status(500).json({ error: 'API key not configured' });
     }
 
-    const anthropic = new Anthropic({ apiKey });
+    const anthropic = new Anthropic({ apiKey, timeout: CLIENT_TIMEOUT_MS, maxRetries: 2 });
 
     // Generate specific revision suggestions based on analysis
     const revisionPrompt = await createMessage(anthropic, {
@@ -1500,7 +1546,7 @@ app.post('/api/generate-redline', async (req, res) => {
         content: `You are an expert trust and estate attorney reviewing a trust document. Based on the analysis results, generate specific, actionable revision suggestions.
 
 ORIGINAL DOCUMENT TEXT (first 50000 chars):
-${documentText.substring(0, 50000)}
+${documentText.substring(0, MAX_DOC_CHARS)}
 
 ANALYSIS RESULTS:
 ${JSON.stringify(analysisResult, null, 2)}
@@ -2087,7 +2133,7 @@ app.post('/api/dictation', async (req, res) => {
       return res.status(500).json({ error: 'ANTHROPIC_API_KEY not configured' });
     }
 
-    const anthropic = new Anthropic({ apiKey });
+    const anthropic = new Anthropic({ apiKey, timeout: CLIENT_TIMEOUT_MS, maxRetries: 2 });
 
     // Build the user prompt
     let userPrompt = `Process the following dictation/transcript and generate professional documents.
