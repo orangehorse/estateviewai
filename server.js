@@ -21,13 +21,19 @@ const MODEL_FALLBACK = 'claude-sonnet-5';
 const MODEL_FAMILY = process.env.CLAUDE_MODEL_FAMILY || 'sonnet';
 const MODEL_PIN = process.env.CLAUDE_MODEL || null;
 const MODEL_TTL_MS = 24 * 60 * 60 * 1000;
+// The JSON schemas these prompts request (110 scored attributes, full reports)
+// do not fit in 8192 output tokens; truncated JSON silently parses to {} and
+// produces an empty analysis. Clamped at request time to the model's own limit.
+const JSON_MAX_TOKENS = Number(process.env.CLAUDE_MAX_OUTPUT_TOKENS) || 32000;
 
 let resolvedModel = MODEL_PIN || MODEL_FALLBACK;
 let resolvedAt = 0;
 let resolving = null;
+let resolvedMaxOutput = 0; // advertised max output tokens for resolvedModel, 0 = unknown
 
 async function fetchNewestModel(apiKey) {
-  const res = await fetch('https://api.anthropic.com/v1/models?limit=1000', {
+  const base = (process.env.ANTHROPIC_BASE_URL || 'https://api.anthropic.com').replace(/\/+$/, '');
+  const res = await fetch(`${base}/v1/models?limit=1000`, {
     headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' }
   });
   if (!res.ok) throw new Error(`models list returned ${res.status}`);
@@ -39,7 +45,7 @@ async function fetchNewestModel(apiKey) {
       && m.created_at)
     .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
   if (!candidates.length) throw new Error(`no ${MODEL_FAMILY} models available to this key`);
-  return candidates[0].id;
+  return candidates[0];
 }
 
 async function getModel(apiKey, force) {
@@ -48,11 +54,13 @@ async function getModel(apiKey, force) {
   if (!force && Date.now() - resolvedAt < MODEL_TTL_MS) return resolvedModel;
   if (!resolving) {
     resolving = fetchNewestModel(apiKey)
-      .then(id => {
-        if (id !== resolvedModel) console.log(`[model] using ${id} (was ${resolvedModel})`);
-        resolvedModel = id;
+      .then(m => {
+        if (m.id !== resolvedModel) console.log(`[model] using ${m.id} (was ${resolvedModel})`);
+        resolvedModel = m.id;
+        // The API tells us this model's real output ceiling; use it rather than guessing.
+        if (typeof m.max_tokens === 'number' && m.max_tokens > 0) resolvedMaxOutput = m.max_tokens;
         resolvedAt = Date.now();
-        return id;
+        return m.id;
       })
       .catch(err => {
         // Keep serving with whatever we last had rather than failing the request.
@@ -71,15 +79,22 @@ async function getModel(apiKey, force) {
 async function createMessage(client, params) {
   const apiKey = (client && client.apiKey) || process.env.ANTHROPIC_API_KEY;
   const model = await getModel(apiKey);
+  // Requesting more than the model allows is a hard API error, so clamp to the
+  // ceiling the models endpoint reported for this model.
+  const params2 = { ...params, model };
+  if (resolvedMaxOutput && params2.max_tokens > resolvedMaxOutput) {
+    console.warn(`[claude] clamping max_tokens ${params2.max_tokens} -> ${resolvedMaxOutput} for ${model}`);
+    params2.max_tokens = resolvedMaxOutput;
+  }
   try {
-    return await client.messages.create({ ...params, model });
+    return await client.messages.create(params2);
   } catch (err) {
     const missingModel = err && (err.status === 404 || /not_found_error/i.test(err.message || ''));
     if (!missingModel || MODEL_PIN) throw err;
     console.warn(`[model] ${model} rejected as not found, re-resolving`);
     const fresh = await getModel(apiKey, true);
     if (fresh === model) throw err;
-    return await client.messages.create({ ...params, model: fresh });
+    return await client.messages.create({ ...params2, model: fresh });
   }
 }
 
@@ -485,7 +500,7 @@ app.post('/api/analyze', async (req, res) => {
     // Step 2: Comprehensive Document Summary with Enhanced Analysis
     send({ step: 2 });
     const sum = await createMessage(anthropic, {
-      max_tokens: 8192,
+      max_tokens: JSON_MAX_TOKENS,
       messages: [{ role: 'user', content: `You are an expert trust and estate attorney conducting a comprehensive trust document analysis. Analyze this trust document thoroughly.
 
 DOCUMENT TEXT:
@@ -582,13 +597,13 @@ Return your analysis as JSON with the following comprehensive structure:
 Be thorough and extract all relevant information. Include confidence levels where information is inferred rather than explicit. If information is not present in the document, indicate "Not specified" for that field.` }]
     });
     
-    let documentSummary = extractJSON(textOf(sum, 'summary'), { rawSummary: textOf(sum, 'summary') });
     const summary = textOf(sum, 'summary');
+    let documentSummary = extractJSON(summary, { rawSummary: summary });
 
     // Step 3: Evaluate with confidence scoring
     send({ step: 3 });
     const ev = await createMessage(anthropic, {
-      max_tokens: 8192,
+      max_tokens: JSON_MAX_TOKENS,
       messages: [{ role: 'user', content: `As an expert wealth planner and asset protection attorney, evaluate this trust document against the evaluation framework.
 
 DOCUMENT SUMMARY: ${summary}
@@ -686,7 +701,7 @@ Return JSON:
     // Step 5: Generate comprehensive report with all enhancements
     send({ step: 5 });
     const rpt = await createMessage(anthropic, {
-      max_tokens: 8192,
+      max_tokens: JSON_MAX_TOKENS,
       messages: [{ role: 'user', content: `Generate a comprehensive trust analysis report with enhanced features.
 
 DOCUMENT SUMMARY: ${JSON.stringify(documentSummary)}
@@ -772,8 +787,9 @@ Be thorough, specific, and actionable. Prioritize practical guidance over genera
     });
 
     let report = {};
-    try { report = JSON.parse(textOf(rpt, 'report').match(/\{[\s\S]*\}/)?.[0] || '{}'); } catch {
-      report = { executiveSummary: { onePage: textOf(rpt, 'report') } };
+    const rptText = textOf(rpt, 'report');
+    try { report = JSON.parse(rptText.match(/\{[\s\S]*\}/)?.[0] || '{}'); } catch {
+      report = { executiveSummary: { onePage: rptText } };
     }
 
     // Compile comprehensive result
@@ -787,7 +803,7 @@ Be thorough, specific, and actionable. Prioritize practical guidance over genera
       confidenceByCategory: confidenceByCategory,
       
       // Executive summaries at different detail levels
-      executiveSummary: asText(report.executiveSummary, textOf(rpt, 'report')),
+      executiveSummary: asText(report.executiveSummary, rptText),
       executiveSummaryShort: asText(report.executiveSummary?.oneParagraph, ''),
       keyTakeaways: report.executiveSummary?.keyTakeaways,
       
@@ -1058,7 +1074,7 @@ app.post('/api/analyze-suite', async (req, res) => {
 
       try {
         const sumResponse = await createMessage(anthropic, {
-          max_tokens: 6000,
+          max_tokens: 16000,
           system: 'You are a JSON API. Output only raw JSON. No markdown fences, no ``` blocks, no preamble or explanation text.',
           messages: [{ role: 'user', content: `You are an expert estate planning attorney. Provide a structured summary of this estate planning document for use in a cross-document coordination review.
 
@@ -1121,7 +1137,8 @@ Return your analysis as JSON:
 Be thorough. Flag anything that might create coordination issues with other estate planning documents.` }]
         });
 
-        let parsed = extractJSON(textOf(sumResponse, 'suite-doc-summary'), { rawSummary: textOf(sumResponse, 'suite-doc-summary') });
+        const sumText = textOf(sumResponse, 'suite-doc-summary');
+        let parsed = extractJSON(sumText, { rawSummary: sumText });
 
         documentSummaries.push({
           index: i,
@@ -1163,7 +1180,7 @@ Be thorough. Flag anything that might create coordination issues with other esta
     ).join('\n\n');
 
     const coordResponse = await createMessage(anthropic, {
-      max_tokens: 8192,
+      max_tokens: JSON_MAX_TOKENS,
       system: 'You are a JSON API. Output only raw JSON. No markdown fences, no ``` blocks, no preamble or explanation text.',
       messages: [{ role: 'user', content: `You are an expert estate planning attorney conducting a comprehensive cross-document coordination review of an estate plan suite. You have summaries of ${validSummaries.length} documents. Analyze how these documents work together as a coordinated estate plan.
 
@@ -1222,7 +1239,8 @@ Return your analysis as JSON:
 Be specific and reference actual document names and provisions. Focus on actionable findings.` }]
     });
 
-    let coordinationData = extractJSON(textOf(coordResponse, 'coordination'), { rawAnalysis: textOf(coordResponse, 'coordination') });
+    const coordText = textOf(coordResponse, 'coordination');
+    let coordinationData = extractJSON(coordText, { rawAnalysis: coordText });
 
     // Calculate overall coordination score
     let overallCoordScore = 0;
@@ -1237,7 +1255,7 @@ Be specific and reference actual document names and provisions. Focus on actiona
     send({ phase: 'report', step: totalDocs + 2, totalSteps: totalDocs + 3, message: 'Generating comprehensive suite report...' });
 
     const reportResponse = await createMessage(anthropic, {
-      max_tokens: 8192,
+      max_tokens: JSON_MAX_TOKENS,
       system: 'You are a JSON API. Output only raw JSON. No markdown fences, no ``` blocks, no preamble or explanation text.',
       messages: [{ role: 'user', content: `Generate a comprehensive estate plan suite review report based on the cross-document coordination analysis.
 
@@ -1309,7 +1327,8 @@ Generate a report as JSON:
 Be thorough, specific, and practical. Reference specific documents by name throughout.` }]
     });
 
-    let suiteReport = extractJSON(textOf(reportResponse, 'suite-report'), { executiveSummary: { fullSummary: textOf(reportResponse, 'suite-report') } });
+    const suiteText = textOf(reportResponse, 'suite-report');
+    let suiteReport = extractJSON(suiteText, { executiveSummary: { fullSummary: suiteText } });
 
     // ===== Send final result =====
     send({ phase: 'complete', step: totalDocs + 3, totalSteps: totalDocs + 3, message: 'Analysis complete' });
@@ -1411,7 +1430,7 @@ app.post('/api/generate-redline', async (req, res) => {
 
     // Generate specific revision suggestions based on analysis
     const revisionPrompt = await createMessage(anthropic, {
-      max_tokens: 8192,
+      max_tokens: JSON_MAX_TOKENS,
       messages: [{
         role: 'user',
         content: `You are an expert trust and estate attorney reviewing a trust document. Based on the analysis results, generate specific, actionable revision suggestions.
@@ -2060,13 +2079,14 @@ Please analyze this content and generate the appropriate professional documents.
     // Parse the response
     let result;
     try {
-      const jsonMatch = textOf(response, 'response').match(/\{[\s\S]*\}/);
+      const respText = textOf(response, 'response');
+      const jsonMatch = respText.match(/\{[\s\S]*\}/);
       result = JSON.parse(jsonMatch ? jsonMatch[0] : '{}');
     } catch (parseError) {
       console.error('JSON parse error:', parseError);
       result = { 
         error: 'Failed to parse AI response',
-        rawResponse: textOf(response, 'response').substring(0, 500) 
+        rawResponse: respText.substring(0, 500) 
       };
     }
 
