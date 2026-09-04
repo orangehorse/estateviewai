@@ -1388,6 +1388,8 @@
             </div>
         </div>
 
+        <div id="coverageNotice" style="display:none;margin:0 0 1.25rem;padding:.9rem 1.1rem;border:1px solid #e0c98a;border-left:4px solid #b8860b;border-radius:6px;background:#fdf8ec;color:#4a3d1f;font-size:.9rem;line-height:1.5"></div>
+
         <div class="download-section">
             <button class="download-button" id="downloadBtn">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -2134,6 +2136,8 @@
                 document.getElementById('trustName').textContent = result.trustName;
             }
 
+            renderCoverageNotice(result);
+
             document.getElementById('executiveSummaryContent').innerHTML = 
                 formatMarkdown(result.executiveSummary || 'No summary available.');
 
@@ -2403,11 +2407,12 @@
                         });
                     }
                     
+                    const scored = typeof score === 'number';
                     item.innerHTML = `
                         <div class="category-header">
                             <div class="category-name">
                                 <span>${category}</span>
-                                <span class="category-score-value">${score}%</span>
+                                <span class="category-score-value">${scored ? score + '%' : 'Not assessed'}</span>
                             </div>
                         </div>
                         <div class="category-bar">
@@ -2417,9 +2422,11 @@
                     `;
                     
                     catContent.appendChild(item);
-                    setTimeout(() => {
-                        item.querySelector('.category-bar-fill').style.width = `${score}%`;
-                    }, 100);
+                    if (scored) {
+                        setTimeout(() => {
+                            item.querySelector('.category-bar-fill').style.width = `${score}%`;
+                        }, 100);
+                    }
                 });
             }
 
@@ -2713,7 +2720,33 @@
             resultsSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
         }
 
+        // Say plainly what the score is based on. A partial evaluation or a
+        // document that exceeded the analysis cap must not look like a full review.
+        function renderCoverageNotice(result) {
+            const host = document.getElementById('coverageNotice');
+            if (!host) return;
+            const notes = [];
+            const cov = result.coverage;
+            if (cov && cov.unassessed > 0) {
+                notes.push(`Scored on ${cov.assessed + cov.notApplicable} of ${cov.total} attributes (${cov.percent}%). ` +
+                           `${cov.unassessed} were not returned by the model and are excluded from the score rather than assumed.`);
+            }
+            if (result.documentTruncated) {
+                const pct = Math.round((result.documentCharsAnalyzed / result.documentChars) * 100);
+                notes.push(`This document exceeded the analysis limit. Only the first ${pct}% ` +
+                           `(${result.documentCharsAnalyzed.toLocaleString()} of ${result.documentChars.toLocaleString()} characters) was reviewed.`);
+            }
+            if (result.overallScore === null || result.overallScore === undefined) {
+                notes.push('No attributes could be scored, so no overall score is shown.');
+            }
+            if (!notes.length) { host.style.display = 'none'; host.innerHTML = ''; return; }
+            host.style.display = 'block';
+            host.innerHTML = '<strong>About this score</strong>' +
+                notes.map(n => `<div style="margin-top:.4rem">${n}</div>`).join('');
+        }
+
         function getGrade(score) {
+            if (score === null || score === undefined) return 'Not scored';
             if (score >= 90) return 'Excellent';
             if (score >= 80) return 'Good';
             if (score >= 70) return 'Adequate';
