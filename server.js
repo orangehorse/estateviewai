@@ -9,6 +9,80 @@ import { Document, Packer, Paragraph, TextRun, HeadingLevel, AlignmentType,
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
 
+// ---- Model resolution -------------------------------------------------
+// The Anthropic API has no "latest" alias: every model ID is pinned and
+// immutable, so any hardcoded ID eventually 404s when that model retires.
+// We resolve the newest model in the configured family from GET /v1/models
+// at boot and re-check daily, and re-resolve on demand if a call ever comes
+// back "model not found". Setting CLAUDE_MODEL pins an exact ID and turns
+// automatic resolution off.
+
+const MODEL_FALLBACK = 'claude-sonnet-5';
+const MODEL_FAMILY = process.env.CLAUDE_MODEL_FAMILY || 'sonnet';
+const MODEL_PIN = process.env.CLAUDE_MODEL || null;
+const MODEL_TTL_MS = 24 * 60 * 60 * 1000;
+
+let resolvedModel = MODEL_PIN || MODEL_FALLBACK;
+let resolvedAt = 0;
+let resolving = null;
+
+async function fetchNewestModel(apiKey) {
+  const res = await fetch('https://api.anthropic.com/v1/models?limit=1000', {
+    headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' }
+  });
+  if (!res.ok) throw new Error(`models list returned ${res.status}`);
+  const body = await res.json();
+  const candidates = (body.data || [])
+    .filter(m => typeof m.id === 'string'
+      && m.id.includes(MODEL_FAMILY)
+      && !/preview|latest/i.test(m.id)
+      && m.created_at)
+    .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+  if (!candidates.length) throw new Error(`no ${MODEL_FAMILY} models available to this key`);
+  return candidates[0].id;
+}
+
+async function getModel(apiKey, force) {
+  if (MODEL_PIN) return MODEL_PIN;
+  if (!apiKey) return resolvedModel;
+  if (!force && Date.now() - resolvedAt < MODEL_TTL_MS) return resolvedModel;
+  if (!resolving) {
+    resolving = fetchNewestModel(apiKey)
+      .then(id => {
+        if (id !== resolvedModel) console.log(`[model] using ${id} (was ${resolvedModel})`);
+        resolvedModel = id;
+        resolvedAt = Date.now();
+        return id;
+      })
+      .catch(err => {
+        // Keep serving with whatever we last had rather than failing the request.
+        console.error(`[model] resolution failed, staying on ${resolvedModel}: ${err.message}`);
+        resolvedAt = Date.now();
+        return resolvedModel;
+      })
+      .finally(() => { resolving = null; });
+  }
+  return resolving;
+}
+
+// All Claude calls go through this. It injects the resolved model and, if that
+// model has been retired out from under us mid-flight, re-resolves and retries
+// once instead of surfacing a 404 to the user.
+async function createMessage(client, params) {
+  const apiKey = (client && client.apiKey) || process.env.ANTHROPIC_API_KEY;
+  const model = await getModel(apiKey);
+  try {
+    return await client.messages.create({ ...params, model });
+  } catch (err) {
+    const missingModel = err && (err.status === 404 || /not_found_error/i.test(err.message || ''));
+    if (!missingModel || MODEL_PIN) throw err;
+    console.warn(`[model] ${model} rejected as not found, re-resolving`);
+    const fresh = await getModel(apiKey, true);
+    if (fresh === model) throw err;
+    return await client.messages.create({ ...params, model: fresh });
+  }
+}
+
 // Helper: extract and parse JSON from Claude responses (strips markdown fences)
 function extractJSON(text, fallback) {
   if (fallback === undefined) fallback = {};
@@ -372,8 +446,8 @@ app.post('/api/analyze', async (req, res) => {
 
     // Step 2: Comprehensive Document Summary with Enhanced Analysis
     send({ step: 2 });
-    const sum = await anthropic.messages.create({
-      model: 'claude-sonnet-4-20250514', max_tokens: 8192,
+    const sum = await createMessage(anthropic, {
+      max_tokens: 8192,
       messages: [{ role: 'user', content: `You are an expert trust and estate attorney conducting a comprehensive trust document analysis. Analyze this trust document thoroughly.
 
 DOCUMENT TEXT:
@@ -470,19 +544,13 @@ Return your analysis as JSON with the following comprehensive structure:
 Be thorough and extract all relevant information. Include confidence levels where information is inferred rather than explicit. If information is not present in the document, indicate "Not specified" for that field.` }]
     });
     
-    let documentSummary = extractJSON(sum.content[0].text);
-
-
-
-
-      documentSummary = { rawSummary: sum.content[0].text };
-    }
+    let documentSummary = extractJSON(sum.content[0].text, { rawSummary: sum.content[0].text });
     const summary = sum.content[0].text;
 
     // Step 3: Evaluate with confidence scoring
     send({ step: 3 });
-    const ev = await anthropic.messages.create({
-      model: 'claude-sonnet-4-20250514', max_tokens: 8192,
+    const ev = await createMessage(anthropic, {
+      max_tokens: 8192,
       messages: [{ role: 'user', content: `As an expert wealth planner and asset protection attorney, evaluate this trust document against the evaluation framework.
 
 DOCUMENT SUMMARY: ${summary}
@@ -579,8 +647,8 @@ Return JSON:
 
     // Step 5: Generate comprehensive report with all enhancements
     send({ step: 5 });
-    const rpt = await anthropic.messages.create({
-      model: 'claude-sonnet-4-20250514', max_tokens: 8192,
+    const rpt = await createMessage(anthropic, {
+      max_tokens: 8192,
       messages: [{ role: 'user', content: `Generate a comprehensive trust analysis report with enhanced features.
 
 DOCUMENT SUMMARY: ${JSON.stringify(documentSummary)}
@@ -800,8 +868,7 @@ app.post('/api/classify-document', async (req, res) => {
     const snippet = text.substring(0, 3000);
     const typeList = SUITE_DOCUMENT_TYPES.map(t => `${t.id}: ${t.label}`).join('\n');
 
-    const response = await anthropic.messages.create({
-      model: 'claude-sonnet-4-5',
+    const response = await createMessage(anthropic, {
       max_tokens: 200,
       system: 'You are a JSON API. Output only raw JSON. No markdown fences, no ``` blocks, no preamble or explanation text.',
       messages: [{ role: 'user', content: `Classify this estate planning document based on its content. Choose the single best match from the list below.
@@ -856,8 +923,7 @@ app.post('/api/classify-documents', async (req, res) => {
       `--- DOCUMENT ${i + 1} (filename: ${doc.filename || 'unknown'}) ---\n${(doc.text || '').substring(0, 2000)}`
     ).join('\n\n');
 
-    const response = await anthropic.messages.create({
-      model: 'claude-sonnet-4-5',
+    const response = await createMessage(anthropic, {
       max_tokens: 1000,
       system: 'You are a JSON API. Respond with raw JSON only. No markdown, no code blocks, no explanation.',
       messages: [{ role: 'user', content: `Classify each of these ${documents.length} estate planning documents based on their content. Choose the single best match from the list below for each.
@@ -953,8 +1019,7 @@ app.post('/api/analyze-suite', async (req, res) => {
       send({ phase: 'summarizing', step: i + 1, totalSteps: totalDocs + 3, message: `Analyzing: ${doc.name || 'Document ' + (i + 1)}` });
 
       try {
-        const sumResponse = await anthropic.messages.create({
-          model: 'claude-sonnet-4-5',
+        const sumResponse = await createMessage(anthropic, {
           max_tokens: 6000,
           system: 'You are a JSON API. Output only raw JSON. No markdown fences, no ``` blocks, no preamble or explanation text.',
           messages: [{ role: 'user', content: `You are an expert estate planning attorney. Provide a structured summary of this estate planning document for use in a cross-document coordination review.
@@ -1018,13 +1083,7 @@ Return your analysis as JSON:
 Be thorough. Flag anything that might create coordination issues with other estate planning documents.` }]
         });
 
-        let parsed = extractJSON(sumResponse.content[0].text);
-
-
-
-
-          parsed = { rawSummary: sumResponse.content[0].text };
-        }
+        let parsed = extractJSON(sumResponse.content[0].text, { rawSummary: sumResponse.content[0].text });
 
         documentSummaries.push({
           index: i,
@@ -1065,8 +1124,7 @@ Be thorough. Flag anything that might create coordination issues with other esta
       `--- DOCUMENT: ${d.name} (${d.typeLabel}) ---\n${JSON.stringify(d.summary, null, 2)}`
     ).join('\n\n');
 
-    const coordResponse = await anthropic.messages.create({
-      model: 'claude-sonnet-4-5',
+    const coordResponse = await createMessage(anthropic, {
       max_tokens: 8192,
       system: 'You are a JSON API. Output only raw JSON. No markdown fences, no ``` blocks, no preamble or explanation text.',
       messages: [{ role: 'user', content: `You are an expert estate planning attorney conducting a comprehensive cross-document coordination review of an estate plan suite. You have summaries of ${validSummaries.length} documents. Analyze how these documents work together as a coordinated estate plan.
@@ -1126,13 +1184,7 @@ Return your analysis as JSON:
 Be specific and reference actual document names and provisions. Focus on actionable findings.` }]
     });
 
-    let coordinationData = extractJSON(coordResponse.content[0].text);
-
-
-
-
-      coordinationData = { rawAnalysis: coordResponse.content[0].text };
-    }
+    let coordinationData = extractJSON(coordResponse.content[0].text, { rawAnalysis: coordResponse.content[0].text });
 
     // Calculate overall coordination score
     let overallCoordScore = 0;
@@ -1146,8 +1198,7 @@ Be specific and reference actual document names and provisions. Focus on actiona
     // ===== PHASE 3: Generate Comprehensive Suite Report =====
     send({ phase: 'report', step: totalDocs + 2, totalSteps: totalDocs + 3, message: 'Generating comprehensive suite report...' });
 
-    const reportResponse = await anthropic.messages.create({
-      model: 'claude-sonnet-4-5',
+    const reportResponse = await createMessage(anthropic, {
       max_tokens: 8192,
       system: 'You are a JSON API. Output only raw JSON. No markdown fences, no ``` blocks, no preamble or explanation text.',
       messages: [{ role: 'user', content: `Generate a comprehensive estate plan suite review report based on the cross-document coordination analysis.
@@ -1220,13 +1271,7 @@ Generate a report as JSON:
 Be thorough, specific, and practical. Reference specific documents by name throughout.` }]
     });
 
-    let suiteReport = extractJSON(reportResponse.content[0].text);
-
-
-
-
-      suiteReport = { executiveSummary: { fullSummary: reportResponse.content[0].text } };
-    }
+    let suiteReport = extractJSON(reportResponse.content[0].text, { executiveSummary: { fullSummary: reportResponse.content[0].text } });
 
     // ===== Send final result =====
     send({ phase: 'complete', step: totalDocs + 3, totalSteps: totalDocs + 3, message: 'Analysis complete' });
@@ -1298,7 +1343,12 @@ app.get('/suite', (req, res) => {
 // END ESTATE PLAN SUITE REVIEW ENDPOINT
 // =====================================================
 
-app.get('/health', (_, res) => res.json({ status: 'ok' }));
+app.get('/health', (_, res) => res.json({
+  status: 'ok',
+  model: resolvedModel,
+  pinned: Boolean(MODEL_PIN),
+  modelResolvedAt: resolvedAt ? new Date(resolvedAt).toISOString() : null
+}));
 
 // Privacy policy page (clean URL)
 app.get('/privacy', (req, res) => {
@@ -1322,8 +1372,7 @@ app.post('/api/generate-redline', async (req, res) => {
     const anthropic = new Anthropic({ apiKey });
 
     // Generate specific revision suggestions based on analysis
-    const revisionPrompt = await anthropic.messages.create({
-      model: 'claude-sonnet-4-20250514',
+    const revisionPrompt = await createMessage(anthropic, {
       max_tokens: 8192,
       messages: [{
         role: 'user',
@@ -1377,12 +1426,6 @@ Limit to 15-20 most important revisions. Write replacement text in professional 
     });
 
     let revisions = extractJSON(revisionPrompt.content[0].text);
-
-
-
-
-      console.error('Failed to parse revisions:', e);
-    }
 
     // Create the DOCX document with tracked changes
     const doc = createRedlineDocument(documentText, revisions, analysisResult, documentName);
@@ -1970,8 +2013,7 @@ Before generating documents, identify any critical information that is missing o
 Please analyze this content and generate the appropriate professional documents. Return your response as valid JSON matching the specified output format.`;
 
     // Call Claude API
-    const response = await anthropic.messages.create({
-      model: 'claude-sonnet-4-20250514',
+    const response = await createMessage(anthropic, {
       max_tokens: 16384,
       system: DICTATION_SYSTEM_PROMPT,
       messages: [{ role: 'user', content: userPrompt }]
@@ -2367,4 +2409,7 @@ app.get('/', (req, res) => {
 });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, '0.0.0.0', () => console.log(`EstateView AI running on port ${PORT}`));
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`EstateView AI running on port ${PORT}`);
+  getModel(process.env.ANTHROPIC_API_KEY).then(m => console.log(`[model] resolved to ${m}`));
+});

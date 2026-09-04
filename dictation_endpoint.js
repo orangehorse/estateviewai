@@ -193,7 +193,7 @@ Please analyze this content and generate the appropriate professional documents.
 
     // Call Claude API
     const response = await anthropic.messages.create({
-      model: 'claude-sonnet-4-20250514',
+      model: process.env.CLAUDE_MODEL || 'claude-sonnet-5',
       max_tokens: 16384,
       system: DICTATION_SYSTEM_PROMPT,
       messages: [{ role: 'user', content: userPrompt }]
