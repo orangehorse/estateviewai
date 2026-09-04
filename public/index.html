@@ -2721,7 +2721,20 @@
             return 'Inadequate';
         }
 
+        // Claude occasionally returns these fields as objects; never assume a string.
+        function toText(v) {
+            if (v === null || v === undefined) return '';
+            if (typeof v === 'string') return v;
+            if (typeof v === 'object') {
+                const p = v.onePage || v.fullSummary || v.oneParagraph || v.summary || v.text;
+                if (typeof p === 'string') return p;
+                try { return JSON.stringify(v, null, 2); } catch (e) { return ''; }
+            }
+            return String(v);
+        }
+
         function formatMarkdown(text) {
+            text = toText(text);
             if (!text) return '';
             return '<p>' + text
                 .replace(/^### (.+)$/gm, '</p><h4>$1</h4><p>')
