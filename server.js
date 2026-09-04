@@ -98,16 +98,82 @@ async function createMessage(client, params) {
   }
 }
 
-// Helper: extract and parse JSON from Claude responses (strips markdown fences)
-function extractJSON(text, fallback) {
+// Helper: build candidate repairs for JSON that is malformed or cut short.
+// Walks the text tracking string state and bracket depth, collecting every
+// offset where a complete value ended outside a string. Each candidate rewinds
+// to one of those offsets, drops a dangling comma and closes whatever is still
+// open, newest boundary first. A truncated 110-attribute evaluation then yields
+// the attributes that did arrive instead of nothing at all.
+function repairCandidates(src, maxTries) {
+  const limit = maxTries || 400;
+  const safe = [];
+  let inStr = false, esc = false;
+  for (let i = 0; i < src.length; i++) {
+    const ch = src[i];
+    if (inStr) {
+      if (esc) esc = false;
+      else if (ch === '\\') esc = true;
+      else if (ch === '"') { inStr = false; safe.push(i); }
+    } else if (ch === '"') inStr = true;
+    else if (ch === '}' || ch === ']') safe.push(i);
+    else if (/[0-9]/.test(ch)) safe.push(i);
+  }
+  const out = [];
+  for (let k = safe.length - 1; k >= 0 && out.length < limit; k--) {
+    let cut = src.slice(0, safe[k] + 1);
+    // a trailing comma, or a key left without its value, cannot be closed
+    cut = cut.replace(/,\s*$/, '');
+    let s2 = false, e2 = false;
+    const open = [];
+    for (let i = 0; i < cut.length; i++) {
+      const ch = cut[i];
+      if (s2) {
+        if (e2) e2 = false;
+        else if (ch === '\\') e2 = true;
+        else if (ch === '"') s2 = false;
+      } else if (ch === '"') s2 = true;
+      else if (ch === '{') open.push('}');
+      else if (ch === '[') open.push(']');
+      else if (ch === '}' || ch === ']') open.pop();
+    }
+    if (s2) continue;
+    if (/[{[,:]\s*$/.test(cut)) continue;
+    let closed = cut;
+    for (let i = open.length - 1; i >= 0; i--) closed += open[i];
+    out.push(closed);
+  }
+  return out;
+}
+
+// Helper: extract and parse JSON from Claude responses. Strips markdown fences,
+// then tries the raw text, the outermost {...}, a trailing-comma cleanup, and
+// finally a repair pass. Logs when everything fails - these parses used to fail
+// silently into an empty object, which surfaced as an analysis where every
+// score was the no-data default and every section read "not available".
+function extractJSON(text, fallback, label) {
   if (fallback === undefined) fallback = {};
-  if (!text) return fallback;
-  var cleaned = text.replace(/```json/g, '').replace(/```/g, '').trim();
-  try {
-    var s = cleaned.indexOf('{'); var e = cleaned.lastIndexOf('}');
-    if (s !== -1 && e > s) return JSON.parse(cleaned.substring(s, e + 1));
-  } catch (e1) {}
-  try { var m = text.match(/\{[\s\S]*\}/); if (m) return JSON.parse(m[0]); } catch (e2) {}
+  if (typeof text !== 'string' || !text.trim()) return fallback;
+  const cleaned = text.replace(/```json/gi, '').replace(/```/g, '').trim();
+  const start = cleaned.indexOf('{');
+  const end = cleaned.lastIndexOf('}');
+  const body = start !== -1 ? cleaned.slice(start) : cleaned;
+
+  const attempts = [cleaned];
+  if (start !== -1 && end > start) attempts.push(cleaned.substring(start, end + 1));
+  attempts.push(body.replace(/,(\s*[}\]])/g, '$1'));
+  for (const candidate of attempts) {
+    try { return JSON.parse(candidate); } catch (e) { /* try the next shape */ }
+  }
+
+  for (const candidate of repairCandidates(body)) {
+    try {
+      const parsed = JSON.parse(candidate);
+      console.warn(`[json] ${label || 'response'}: recovered ${candidate.length} of ${cleaned.length} chars by repairing malformed or truncated JSON`);
+      return parsed;
+    } catch (e) { /* rewind further */ }
+  }
+
+  console.warn(`[json] ${label || 'response'}: unparseable (${cleaned.length} chars, starts "${cleaned.slice(0, 80).replace(/\s+/g, ' ')}"), using fallback`);
   return fallback;
 }
 
@@ -598,7 +664,7 @@ Be thorough and extract all relevant information. Include confidence levels wher
     });
     
     const summary = textOf(sum, 'summary');
-    let documentSummary = extractJSON(summary, { rawSummary: summary });
+    let documentSummary = extractJSON(summary, { rawSummary: summary }, 'summary');
 
     // Step 3: Evaluate with confidence scoring
     send({ step: 3 });
@@ -643,7 +709,7 @@ Return JSON:
     });
 
     let evalData = { attributeScores: [], criticalIssues: [], stateSpecificIssues: [] };
-    try { evalData = JSON.parse(textOf(ev, 'evaluation').match(/\{[\s\S]*\}/)?.[0] || '{}'); } catch {}
+    evalData = extractJSON(textOf(ev, 'evaluation'), evalData, 'evaluation');
 
     // Step 4: Calculate scores and generate enhanced analysis
     send({ step: 4 });
@@ -788,9 +854,7 @@ Be thorough, specific, and actionable. Prioritize practical guidance over genera
 
     let report = {};
     const rptText = textOf(rpt, 'report');
-    try { report = JSON.parse(rptText.match(/\{[\s\S]*\}/)?.[0] || '{}'); } catch {
-      report = { executiveSummary: { onePage: rptText } };
-    }
+    report = extractJSON(rptText, { executiveSummary: { onePage: rptText } }, 'report');
 
     // Compile comprehensive result
     send({ result: {
@@ -996,7 +1060,7 @@ Return exactly ${documents.length} results in the same order as the documents ab
     let parsed = { results: [] };
     try {
 
-      parsed = extractJSON(textOf(response, 'response'));
+      parsed = extractJSON(textOf(response, 'response'), { results: [] }, 'suite-classify');
       // Validate all types
       if (parsed.results) {
         parsed.results = parsed.results.map(r => ({
@@ -1138,7 +1202,7 @@ Be thorough. Flag anything that might create coordination issues with other esta
         });
 
         const sumText = textOf(sumResponse, 'suite-doc-summary');
-        let parsed = extractJSON(sumText, { rawSummary: sumText });
+        let parsed = extractJSON(sumText, { rawSummary: sumText }, 'suite-doc-summary');
 
         documentSummaries.push({
           index: i,
@@ -1240,7 +1304,7 @@ Be specific and reference actual document names and provisions. Focus on actiona
     });
 
     const coordText = textOf(coordResponse, 'coordination');
-    let coordinationData = extractJSON(coordText, { rawAnalysis: coordText });
+    let coordinationData = extractJSON(coordText, { rawAnalysis: coordText }, 'coordination');
 
     // Calculate overall coordination score
     let overallCoordScore = 0;
@@ -1328,7 +1392,7 @@ Be thorough, specific, and practical. Reference specific documents by name throu
     });
 
     const suiteText = textOf(reportResponse, 'suite-report');
-    let suiteReport = extractJSON(suiteText, { executiveSummary: { fullSummary: suiteText } });
+    let suiteReport = extractJSON(suiteText, { executiveSummary: { fullSummary: suiteText } }, 'suite-report');
 
     // ===== Send final result =====
     send({ phase: 'complete', step: totalDocs + 3, totalSteps: totalDocs + 3, message: 'Analysis complete' });
@@ -1482,7 +1546,7 @@ Limit to 15-20 most important revisions. Write replacement text in professional 
       }]
     });
 
-    let revisions = extractJSON(textOf(revisionPrompt, 'revisions'));
+    let revisions = extractJSON(textOf(revisionPrompt, 'revisions'), {}, 'revisions');
 
     // Create the DOCX document with tracked changes
     const doc = createRedlineDocument(documentText, revisions, analysisResult, documentName);
