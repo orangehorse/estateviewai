@@ -97,6 +97,21 @@ function extractJSON(text, fallback) {
 }
 
 
+
+// Helper: Claude sometimes returns executiveSummary (and friends) as an object
+// rather than a string. The frontend formatters call String methods on these
+// fields, so coerce to text here rather than shipping an object to the client.
+function asText(value, fallback) {
+  if (typeof value === 'string') return value;
+  if (value === null || value === undefined) return fallback || '';
+  if (typeof value === 'object') {
+    var preferred = value.onePage || value.fullSummary || value.oneParagraph || value.summary || value.text;
+    if (typeof preferred === 'string') return preferred;
+    try { return JSON.stringify(value, null, 2); } catch (e) { return fallback || ''; }
+  }
+  return String(value);
+}
+
 app.use(express.json({ limit: '50mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 
@@ -749,8 +764,8 @@ Be thorough, specific, and actionable. Prioritize practical guidance over genera
       confidenceByCategory: confidenceByCategory,
       
       // Executive summaries at different detail levels
-      executiveSummary: report.executiveSummary?.onePage || report.executiveSummary || rpt.content[0].text,
-      executiveSummaryShort: report.executiveSummary?.oneParagraph,
+      executiveSummary: asText(report.executiveSummary, rpt.content[0].text),
+      executiveSummaryShort: asText(report.executiveSummary?.oneParagraph, ''),
       keyTakeaways: report.executiveSummary?.keyTakeaways,
       
       // Core analysis
@@ -1299,8 +1314,8 @@ Be thorough, specific, and practical. Reference specific documents by name throu
       documentTimeline: coordinationData.documentTimeline || [],
       
       // Report
-      executiveSummary: suiteReport.executiveSummary?.fullSummary || suiteReport.executiveSummary || '',
-      executiveSummaryShort: suiteReport.executiveSummary?.oneParagraph || '',
+      executiveSummary: asText(suiteReport.executiveSummary, ''),
+      executiveSummaryShort: asText(suiteReport.executiveSummary?.oneParagraph, ''),
       keyTakeaways: suiteReport.executiveSummary?.keyTakeaways || [],
       overallAssessment: suiteReport.executiveSummary?.overallAssessment || 'unknown',
       planStrengths: suiteReport.planStrengths || [],
