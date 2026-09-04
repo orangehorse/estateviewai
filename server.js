@@ -98,6 +98,28 @@ function extractJSON(text, fallback) {
 
 
 
+
+// Helper: pull the text out of a Messages API response. Never index content[0]
+// directly - the content array can carry non-text blocks (thinking, tool use),
+// in which case content[0].text is undefined and every downstream JSON.parse
+// silently yields {}. Also warns when a response was truncated at max_tokens,
+// which produces unparseable JSON.
+function textOf(message, label) {
+  const blocks = (message && Array.isArray(message.content)) ? message.content : [];
+  const text = blocks
+    .filter(b => b && b.type === 'text' && typeof b.text === 'string')
+    .map(b => b.text)
+    .join('\n')
+    .trim();
+  const tag = label || 'response';
+  if (!text) {
+    console.warn(`[claude] ${tag}: no text block (blocks=${blocks.map(b => b && b.type).join(',') || 'none'}, stop_reason=${message && message.stop_reason})`);
+  } else if (message && message.stop_reason === 'max_tokens') {
+    console.warn(`[claude] ${tag}: truncated at max_tokens after ${text.length} chars; JSON will not parse`);
+  }
+  return text;
+}
+
 // Helper: Claude sometimes returns executiveSummary (and friends) as an object
 // rather than a string. The frontend formatters call String methods on these
 // fields, so coerce to text here rather than shipping an object to the client.
@@ -457,6 +479,7 @@ app.post('/api/analyze', async (req, res) => {
 
     const anthropic = new Anthropic({ apiKey });
     const text = documentText.substring(0, 100000);
+    console.log(`[analyze] ${documentName || 'document'}: ${documentText.length} chars extracted, ${text.length} sent`);
     const attrList = ATTRIBUTES.map(a => `${a.id}. ${a.name} (Importance: ${a.imp}/10)`).join('\n');
 
     // Step 2: Comprehensive Document Summary with Enhanced Analysis
@@ -559,8 +582,8 @@ Return your analysis as JSON with the following comprehensive structure:
 Be thorough and extract all relevant information. Include confidence levels where information is inferred rather than explicit. If information is not present in the document, indicate "Not specified" for that field.` }]
     });
     
-    let documentSummary = extractJSON(sum.content[0].text, { rawSummary: sum.content[0].text });
-    const summary = sum.content[0].text;
+    let documentSummary = extractJSON(textOf(sum, 'summary'), { rawSummary: textOf(sum, 'summary') });
+    const summary = textOf(sum, 'summary');
 
     // Step 3: Evaluate with confidence scoring
     send({ step: 3 });
@@ -605,7 +628,7 @@ Return JSON:
     });
 
     let evalData = { attributeScores: [], criticalIssues: [], stateSpecificIssues: [] };
-    try { evalData = JSON.parse(ev.content[0].text.match(/\{[\s\S]*\}/)?.[0] || '{}'); } catch {}
+    try { evalData = JSON.parse(textOf(ev, 'evaluation').match(/\{[\s\S]*\}/)?.[0] || '{}'); } catch {}
 
     // Step 4: Calculate scores and generate enhanced analysis
     send({ step: 4 });
@@ -749,8 +772,8 @@ Be thorough, specific, and actionable. Prioritize practical guidance over genera
     });
 
     let report = {};
-    try { report = JSON.parse(rpt.content[0].text.match(/\{[\s\S]*\}/)?.[0] || '{}'); } catch {
-      report = { executiveSummary: { onePage: rpt.content[0].text } };
+    try { report = JSON.parse(textOf(rpt, 'report').match(/\{[\s\S]*\}/)?.[0] || '{}'); } catch {
+      report = { executiveSummary: { onePage: textOf(rpt, 'report') } };
     }
 
     // Compile comprehensive result
@@ -764,7 +787,7 @@ Be thorough, specific, and actionable. Prioritize practical guidance over genera
       confidenceByCategory: confidenceByCategory,
       
       // Executive summaries at different detail levels
-      executiveSummary: asText(report.executiveSummary, rpt.content[0].text),
+      executiveSummary: asText(report.executiveSummary, textOf(rpt, 'report')),
       executiveSummaryShort: asText(report.executiveSummary?.oneParagraph, ''),
       keyTakeaways: report.executiveSummary?.keyTakeaways,
       
@@ -900,7 +923,7 @@ Return ONLY a JSON object with no other text:
 
     let result = { type: 'other', confidence: 'low', reason: 'Could not classify' };
     try {
-      const match = response.content[0].text.match(/\{[\s\S]*\}/);
+      const match = textOf(response, 'response').match(/\{[\s\S]*\}/);
       if (match) result = JSON.parse(match[0]);
       // Validate the type is in our list
       if (!SUITE_DOCUMENT_TYPES.find(t => t.id === result.type)) {
@@ -957,7 +980,7 @@ Return exactly ${documents.length} results in the same order as the documents ab
     let parsed = { results: [] };
     try {
 
-      parsed = extractJSON(response.content[0].text);
+      parsed = extractJSON(textOf(response, 'response'));
       // Validate all types
       if (parsed.results) {
         parsed.results = parsed.results.map(r => ({
@@ -1098,7 +1121,7 @@ Return your analysis as JSON:
 Be thorough. Flag anything that might create coordination issues with other estate planning documents.` }]
         });
 
-        let parsed = extractJSON(sumResponse.content[0].text, { rawSummary: sumResponse.content[0].text });
+        let parsed = extractJSON(textOf(sumResponse, 'suite-doc-summary'), { rawSummary: textOf(sumResponse, 'suite-doc-summary') });
 
         documentSummaries.push({
           index: i,
@@ -1199,7 +1222,7 @@ Return your analysis as JSON:
 Be specific and reference actual document names and provisions. Focus on actionable findings.` }]
     });
 
-    let coordinationData = extractJSON(coordResponse.content[0].text, { rawAnalysis: coordResponse.content[0].text });
+    let coordinationData = extractJSON(textOf(coordResponse, 'coordination'), { rawAnalysis: textOf(coordResponse, 'coordination') });
 
     // Calculate overall coordination score
     let overallCoordScore = 0;
@@ -1286,7 +1309,7 @@ Generate a report as JSON:
 Be thorough, specific, and practical. Reference specific documents by name throughout.` }]
     });
 
-    let suiteReport = extractJSON(reportResponse.content[0].text, { executiveSummary: { fullSummary: reportResponse.content[0].text } });
+    let suiteReport = extractJSON(textOf(reportResponse, 'suite-report'), { executiveSummary: { fullSummary: textOf(reportResponse, 'suite-report') } });
 
     // ===== Send final result =====
     send({ phase: 'complete', step: totalDocs + 3, totalSteps: totalDocs + 3, message: 'Analysis complete' });
@@ -1440,7 +1463,7 @@ Limit to 15-20 most important revisions. Write replacement text in professional 
       }]
     });
 
-    let revisions = extractJSON(revisionPrompt.content[0].text);
+    let revisions = extractJSON(textOf(revisionPrompt, 'revisions'));
 
     // Create the DOCX document with tracked changes
     const doc = createRedlineDocument(documentText, revisions, analysisResult, documentName);
@@ -2037,13 +2060,13 @@ Please analyze this content and generate the appropriate professional documents.
     // Parse the response
     let result;
     try {
-      const jsonMatch = response.content[0].text.match(/\{[\s\S]*\}/);
+      const jsonMatch = textOf(response, 'response').match(/\{[\s\S]*\}/);
       result = JSON.parse(jsonMatch ? jsonMatch[0] : '{}');
     } catch (parseError) {
       console.error('JSON parse error:', parseError);
       result = { 
         error: 'Failed to parse AI response',
-        rawResponse: response.content[0].text.substring(0, 500) 
+        rawResponse: textOf(response, 'response').substring(0, 500) 
       };
     }
 
