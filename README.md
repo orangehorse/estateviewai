@@ -24,7 +24,7 @@ A sophisticated trust document analyzer that evaluates documents against 110 att
 
 ### Scanned Documents (OCR)
 - PDFs are read from their text layer in the browser first. When at least a quarter of the pages have no readable text (a scan, or a signed copy that was scanned in), the file is sent to `POST /api/ocr` and Claude transcribes it from the page images.
-- Photos of documents (JPG, PNG, WEBP) can be uploaded on the analyzer, suite and dictation pages and are always transcribed this way.
+- Photos of documents (JPG, PNG, WEBP) can be uploaded and are always transcribed this way.
 - Scanned files are limited to 22 MB (the Claude API's 32 MB request limit, less base64 overhead). Split larger scans into smaller PDFs.
 - Long transcriptions continue automatically, up to three times, if a response hits the output limit. `OCR_MAX_OUTPUT_TOKENS` (default 64000) sets the per-response limit.
 - Nothing is stored; logs record only file type, size, character count and time.
