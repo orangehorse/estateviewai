@@ -1066,9 +1066,9 @@ Include instructions for what documents you need:
                             <line x1="12" y1="3" x2="12" y2="15"/>
                         </svg>
                         <p class="upload-text">Drag & drop your file here, or click to browse</p>
-                        <p class="upload-formats">Supports TXT, DOCX, PDF (transcripts), MP3, WAV, M4A (audio), MP4, MOV (video)</p>
+                        <p class="upload-formats">Supports TXT, DOCX, PDF (including scans), JPG, PNG (photos of notes), MP3, WAV, M4A (audio), MP4, MOV (video)</p>
                     </div>
-                    <input type="file" id="fileInput" accept=".txt,.docx,.pdf,.mp3,.wav,.m4a,.mp4,.mov" style="display: none;">
+                    <input type="file" id="fileInput" accept=".txt,.docx,.pdf,.jpg,.jpeg,.png,.webp,.mp3,.wav,.m4a,.mp4,.mov" style="display: none;">
                     
                     <div class="selected-file" id="selectedFile" style="display: none;">
                         <svg class="selected-file-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -1231,7 +1231,12 @@ Examples:
         <p style="margin-top: 0.5rem; font-size: 0.85rem;">All generated documents require professional review before client delivery.</p>
     </footer>
 
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
+    <script src="/ocr.js"></script>
     <script>
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
         // Dictation AI JavaScript
         document.addEventListener('DOMContentLoaded', () => {
             // Elements
@@ -1442,10 +1447,10 @@ Examples:
                 ];
 
                 const extension = file.name.split('.').pop().toLowerCase();
-                const allowedExtensions = ['txt', 'docx', 'pdf', 'mp3', 'wav', 'm4a', 'mp4', 'mov'];
+                const allowedExtensions = ['txt', 'docx', 'pdf', ...EstateOCR.IMAGE_EXTS, 'mp3', 'wav', 'm4a', 'mp4', 'mov'];
 
                 if (!allowedExtensions.includes(extension)) {
-                    alert('Unsupported file type. Please upload a transcript (TXT, DOCX, PDF) or media file (MP3, WAV, M4A, MP4, MOV).');
+                    alert('Unsupported file type. Please upload a transcript (TXT, DOCX, PDF), a photo (JPG, PNG), or a media file (MP3, WAV, M4A, MP4, MOV).');
                     return;
                 }
 
@@ -1497,7 +1502,14 @@ Examples:
                     content = pastedTranscript.value;
                 } else if (currentTab === 'upload') {
                     // Read file content
-                    content = await readFileContent(uploadedFile);
+                    try {
+                        content = await readFileContent(uploadedFile);
+                    } catch (err) {
+                        if (err && err.message !== 'Audio transcription not supported') {
+                            alert(err.message || 'Could not read the file.');
+                        }
+                        return;
+                    }
                 }
 
                 if (!content || content.trim().length < 50) {
@@ -1531,14 +1543,18 @@ Examples:
                         // For now, prompt user to use the dictate tab or paste transcript
                         alert('Audio/video transcription requires a dedicated transcription service. Please use the "Dictate" tab for live recording, or paste a transcript from Temi, Otter, or similar service.');
                         reject(new Error('Audio transcription not supported'));
+                    } else if (extension === 'docx') {
+                        file.arrayBuffer()
+                            .then(arrayBuffer => mammoth.extractRawText({ arrayBuffer }))
+                            .then(result => resolve(result.value))
+                            .catch(reject);
+                    } else if (extension === 'pdf') {
+                        // Reads the text layer, or OCRs the file if it is a scan.
+                        EstateOCR.extractPdfText(file).then(resolve, reject);
+                    } else if (EstateOCR.IMAGE_EXTS.includes(extension)) {
+                        EstateOCR.ocrFile(file).then(resolve, reject);
                     } else {
-                        // For DOCX/PDF, read as base64 and send to server
-                        reader.onload = (e) => {
-                            const base64 = e.target.result.split(',')[1];
-                            resolve({ type: extension, data: base64 });
-                        };
-                        reader.onerror = reject;
-                        reader.readAsDataURL(file);
+                        reject(new Error('Unsupported file type'));
                     }
                 });
             }

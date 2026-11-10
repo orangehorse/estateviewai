@@ -2124,6 +2124,101 @@ Internal: "CONFIDENTIAL â ATTORNEY WORK PRODUCT"`;
 // Store generated documents temporarily (in production, use proper storage)
 const generatedDocuments = new Map();
 
+// =====================================================
+// OCR ENDPOINT
+// Scanned PDFs and photos have no text layer for pdf.js to read in the
+// browser. The page sends the file here and Claude transcribes it from the
+// page images. Nothing is written to disk, matching the privacy notice.
+// =====================================================
+
+const OCR_MEDIA_TYPES = {
+  pdf: 'application/pdf',
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+  png: 'image/png',
+  webp: 'image/webp',
+  gif: 'image/gif'
+};
+const OCR_MAX_TOKENS = Number(process.env.OCR_MAX_OUTPUT_TOKENS) || 64000;
+// A long scan can outrun one response's output limit. Ask the model to carry on
+// from where it stopped, a bounded number of times.
+const OCR_MAX_CONTINUATIONS = 3;
+
+const OCR_PROMPT = `Transcribe every page of this document verbatim, in reading order.
+- Preserve article, section and paragraph numbering, headings and defined terms exactly as written.
+- Start each page with a line "--- Page N ---".
+- Write [illegible] for text you cannot read, [signature] for signatures, and [handwritten: ...] for handwritten notes you can read.
+- Reproduce tables as plain text rows.
+- Output only the transcription: no summary, commentary or analysis.`;
+
+async function ocrDocument(anthropic, data, mediaType) {
+  const apiKey = (anthropic && anthropic.apiKey) || process.env.ANTHROPIC_API_KEY;
+  const model = await getModel(apiKey);
+  let maxTokens = OCR_MAX_TOKENS;
+  if (resolvedMaxOutput && maxTokens > resolvedMaxOutput) maxTokens = resolvedMaxOutput;
+
+  const fileBlock = mediaType === 'application/pdf'
+    ? { type: 'document', source: { type: 'base64', media_type: mediaType, data } }
+    : { type: 'image', source: { type: 'base64', media_type: mediaType, data } };
+  const messages = [{ role: 'user', content: [fileBlock, { type: 'text', text: OCR_PROMPT }] }];
+
+  let text = '';
+  for (let round = 0; round <= OCR_MAX_CONTINUATIONS; round++) {
+    // Streamed so a long transcription is not cut off by an HTTP timeout.
+    const msg = await anthropic.messages
+      .stream({ model, max_tokens: maxTokens, messages })
+      .finalMessage();
+
+    if (msg.stop_reason === 'refusal') {
+      const err = new Error('The document could not be processed.');
+      err.status = 422;
+      throw err;
+    }
+    text += msg.content.filter(b => b.type === 'text').map(b => b.text).join('');
+    if (msg.stop_reason !== 'max_tokens') return { text, truncated: false };
+
+    messages.push({ role: 'assistant', content: msg.content });
+    messages.push({
+      role: 'user',
+      content: 'Continue the transcription exactly where you stopped. Do not repeat any text already written.'
+    });
+  }
+  return { text, truncated: true };
+}
+
+app.post('/api/ocr', async (req, res) => {
+  try {
+    const { data, ext } = req.body || {};
+    const mediaType = OCR_MEDIA_TYPES[String(ext || '').toLowerCase()];
+    if (!mediaType) return res.status(400).json({ error: 'OCR supports PDF, JPG, PNG, WEBP and GIF files.' });
+    if (typeof data !== 'string' || data.length < 100) return res.status(400).json({ error: 'No file data received.' });
+
+    const apiKey = process.env.ANTHROPIC_API_KEY;
+    if (!apiKey) return res.status(500).json({ error: 'ANTHROPIC_API_KEY not configured' });
+    const anthropic = new Anthropic({ apiKey, timeout: CLIENT_TIMEOUT_MS, maxRetries: 2 });
+
+    const started = Date.now();
+    const { text, truncated } = await ocrDocument(anthropic, data, mediaType);
+    // Log size and timing only; document contents and names stay out of logs.
+    console.log(`[ocr] ${ext} ${Math.round(data.length * 0.75 / 1024)} KB -> ${text.length} chars in ${Date.now() - started} ms${truncated ? ' (TRUNCATED)' : ''}`);
+    res.json({ text, truncated });
+  } catch (err) {
+    console.error('[ocr] failed:', err.status || '', err.message);
+    let status = 500;
+    let message = 'Could not read the scanned document. Please try again.';
+    if (err.status === 422) {
+      status = 422; message = err.message;
+    } else if (err.status === 400 || err.status === 413) {
+      status = 400; message = 'The file could not be read. It may be too large, password-protected or damaged.';
+    }
+    res.status(status).json({ error: message });
+  }
+});
+
+// =====================================================
+// END OCR ENDPOINT
+// =====================================================
+
 // Dictation API endpoint
 app.post('/api/dictation', async (req, res) => {
   try {
@@ -2137,7 +2232,12 @@ app.post('/api/dictation', async (req, res) => {
       skipClarifications
     } = req.body;
 
-    if (!content || (typeof content === 'string' && content.length < 50)) {
+    // The page extracts text (with OCR for scans) before sending. A raw file
+    // object would otherwise be pasted into the prompt as base64 gibberish.
+    if (content && typeof content !== 'string') {
+      return res.status(400).json({ error: 'Please send document text, not a raw file. Reload the page and try again.' });
+    }
+    if (!content || content.length < 50) {
       return res.status(400).json({ error: 'Content too short. Please provide more detailed input.' });
     }
 

@@ -16,6 +16,7 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
     <!-- Mammoth for DOCX -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
+    <script src="/ocr.js"></script>
     <style>
         :root {
             --color-ink: #1a1a2e;
@@ -1294,9 +1295,9 @@
                 <label class="upload-button" for="fileInput">
                     Choose File
                 </label>
-                <p class="upload-formats">Supports PDF, DOCX, and TXT files</p>
+                <p class="upload-formats">Supports PDF (including scans), DOCX, TXT, and photos (JPG, PNG)</p>
             </div>
-            <input type="file" id="fileInput" accept=".pdf,.docx,.doc,.txt" style="display: none;">
+            <input type="file" id="fileInput" accept=".pdf,.docx,.doc,.txt,.jpg,.jpeg,.png,.webp" style="display: none;">
         </div>
 
         <!-- Selected file display -->
@@ -1935,10 +1936,10 @@
 
         function selectFile(file) {
             const ext = file.name.split('.').pop().toLowerCase();
-            const validExts = ['pdf', 'docx', 'doc', 'txt'];
+            const validExts = ['pdf', 'docx', 'doc', 'txt', ...EstateOCR.IMAGE_EXTS];
             
             if (!validExts.includes(ext)) {
-                alert('Please select a PDF, DOCX, or TXT file.');
+                alert('Please select a PDF, DOCX, TXT, or image (JPG, PNG) file.');
                 return;
             }
 
@@ -1969,6 +1970,7 @@
             const ext = filename.split('.').pop().toLowerCase();
             if (ext === 'pdf') return 'pdf';
             if (ext === 'docx' || ext === 'doc') return 'docx';
+            if (EstateOCR.IMAGE_EXTS.includes(ext)) return 'image';
             return 'txt';
         }
 
@@ -2091,15 +2093,12 @@
             }
 
             if (format === 'pdf') {
-                const arrayBuffer = await file.arrayBuffer();
-                const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-                let text = '';
-                for (let i = 1; i <= pdf.numPages; i++) {
-                    const page = await pdf.getPage(i);
-                    const content = await page.getTextContent();
-                    text += content.items.map(item => item.str).join(' ') + '\n';
-                }
-                return text;
+                // Reads the text layer, or OCRs the file if it is a scan.
+                return await EstateOCR.extractPdfText(file);
+            }
+
+            if (format === 'image') {
+                return await EstateOCR.ocrFile(file);
             }
 
             if (format === 'docx') {
