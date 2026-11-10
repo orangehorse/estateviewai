@@ -2045,7 +2045,12 @@
 
             } catch (error) {
                 console.error('Analysis error:', error);
-                showError(error.message || 'An error occurred during analysis.');
+                // A dropped connection surfaces as a bare TypeError ("network error",
+                // "Failed to fetch", "Load failed"), which tells the user nothing.
+                const dropped = error instanceof TypeError && /network|fetch|load failed/i.test(error.message || '');
+                showError(dropped
+                    ? 'The connection to the server was interrupted before the analysis finished. Please check your internet connection and try again.'
+                    : (error.message || 'An error occurred during analysis.'));
                 // Show upload section again so user can retry
                 document.getElementById('uploadSection').style.display = 'block';
             } finally {

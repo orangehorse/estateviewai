@@ -565,11 +565,31 @@ function getStatusExplanation(status, score) {
   }
 }
 
+// Proxies in front of the app (Render's load balancer included) close a
+// connection that goes quiet for too long, and each Claude call here can run
+// for minutes without sending a byte. The browser then reports "network error".
+// Writing a small keep-alive every few seconds keeps the connection open.
+const KEEPALIVE_MS = Number(process.env.KEEPALIVE_MS) || 15000;
+
+function startKeepAlive(res, chunk) {
+  const timer = setInterval(() => {
+    if (!res.writableEnded) res.write(chunk);
+  }, KEEPALIVE_MS);
+  const stop = () => clearInterval(timer);
+  res.on('close', stop);
+  res.on('finish', stop);
+  return stop;
+}
+
 // Analysis endpoint
 app.post('/api/analyze', async (req, res) => {
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
   res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no');
+  res.flushHeaders();
+  // SSE comment lines (starting with ":") are ignored by the page.
+  startKeepAlive(res, ': keep-alive\n\n');
 
   const send = (d) => res.write(`data: ${JSON.stringify(d)}\n\n`);
 
@@ -1512,11 +1532,20 @@ app.post('/api/ocr', async (req, res) => {
     if (!apiKey) return res.status(500).json({ error: 'ANTHROPIC_API_KEY not configured' });
     const anthropic = new Anthropic({ apiKey, timeout: CLIENT_TIMEOUT_MS, maxRetries: 2 });
 
+    // A long scan can take minutes. Send the headers now and keep the
+    // connection alive with whitespace, which JSON parsing ignores. From here
+    // on the status is 200, so failures are reported as { error } in the body.
+    res.status(200).setHeader('Content-Type', 'application/json; charset=utf-8');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('X-Accel-Buffering', 'no');
+    res.flushHeaders();
+    startKeepAlive(res, ' ');
+
     const started = Date.now();
     const { text, truncated } = await ocrDocument(anthropic, data, mediaType);
     // Log size and timing only; document contents and names stay out of logs.
     console.log(`[ocr] ${ext} ${Math.round(data.length * 0.75 / 1024)} KB -> ${text.length} chars in ${Date.now() - started} ms${truncated ? ' (TRUNCATED)' : ''}`);
-    res.json({ text, truncated });
+    res.end(JSON.stringify({ text, truncated }));
   } catch (err) {
     console.error('[ocr] failed:', err.status || '', err.message);
     let status = 500;
@@ -1526,7 +1555,8 @@ app.post('/api/ocr', async (req, res) => {
     } else if (err.status === 400 || err.status === 413) {
       status = 400; message = 'The file could not be read. It may be too large, password-protected or damaged.';
     }
-    res.status(status).json({ error: message });
+    if (res.headersSent) res.end(JSON.stringify({ error: message }));
+    else res.status(status).json({ error: message });
   }
 });
 

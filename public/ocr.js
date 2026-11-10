@@ -46,7 +46,8 @@
       body: JSON.stringify({ data, ext })
     });
     const body = await resp.json().catch(() => ({}));
-    if (!resp.ok) throw new Error(body.error || 'Could not read the scanned document');
+    // Once the server starts a long OCR it answers 200 and reports failures in the body.
+    if (!resp.ok || body.error) throw new Error(body.error || 'Could not read the scanned document');
     if (body.truncated) console.warn('[ocr] transcription stopped before the end of the document');
     return body.text || '';
   }
