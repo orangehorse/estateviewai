@@ -24,8 +24,11 @@ const MODEL_PIN = process.env.CLAUDE_MODEL || null;
 const MODEL_TTL_MS = 24 * 60 * 60 * 1000;
 // The JSON schemas these prompts request (110 scored attributes, full reports)
 // do not fit in 8192 output tokens; truncated JSON silently parses to {} and
-// produces an empty analysis. Clamped at request time to the model's own limit.
-const JSON_MAX_TOKENS = Number(process.env.CLAUDE_MAX_OUTPUT_TOKENS) || 32000;
+// produces an empty analysis. Current models think before answering and that
+// thinking counts against this limit, so 32k cut long trusts' summaries short.
+// Requests are streamed, so a large limit does not risk an HTTP timeout.
+// Clamped at request time to the model's own limit.
+const JSON_MAX_TOKENS = Number(process.env.CLAUDE_MAX_OUTPUT_TOKENS) || 64000;
 
 // How much of a document reaches the model. The old 100k cap silently dropped
 // roughly two thirds of a typical trust and the user was never told, so the
@@ -89,7 +92,10 @@ async function getModel(apiKey, force) {
 // All Claude calls go through this. It injects the resolved model and, if that
 // model has been retired out from under us mid-flight, re-resolves and retries
 // once instead of surfacing a 404 to the user.
-async function createMessage(client, params) {
+// Requests are streamed (a large max_tokens can take minutes) and accept an
+// AbortSignal so work stops when the browser goes away.
+async function createMessage(client, params, { signal } = {}) {
+  const call = (p) => client.messages.stream(p, { signal }).finalMessage();
   const apiKey = (client && client.apiKey) || process.env.ANTHROPIC_API_KEY;
   const model = await getModel(apiKey);
   // Requesting more than the model allows is a hard API error, so clamp to the
@@ -100,8 +106,9 @@ async function createMessage(client, params) {
     params2.max_tokens = resolvedMaxOutput;
   }
   try {
-    return await client.messages.create(params2);
+    return await call(params2);
   } catch (err) {
+    if (signal && signal.aborted) throw err;
     // A parameter this model no longer accepts (temperature was deprecated this
     // way) is a 400 that names the offending key. Drop it and retry rather than
     // failing the whole analysis.
@@ -114,7 +121,7 @@ async function createMessage(client, params) {
         console.warn(`[claude] API rejected parameter "${key}" for ${model}; retrying without it`);
         const stripped = { ...params2 };
         delete stripped[key];
-        return await client.messages.create(stripped);
+        return await call(stripped);
       }
     }
     const missingModel = err && (err.status === 404 || /not_found_error/i.test(msg));
@@ -122,7 +129,7 @@ async function createMessage(client, params) {
     console.warn(`[model] ${model} rejected as not found, re-resolving`);
     const fresh = await getModel(apiKey, true);
     if (fresh === model) throw err;
-    return await client.messages.create({ ...params2, model: fresh });
+    return await call({ ...params2, model: fresh });
   }
 }
 
@@ -581,6 +588,21 @@ function startKeepAlive(res, chunk) {
   return stop;
 }
 
+// Aborts in-flight Claude calls when the browser disconnects, so an abandoned
+// request stops costing API usage. 'close' also fires after a normal finish,
+// so only abort if the response was not completed.
+function abortOnDisconnect(res) {
+  const controller = new AbortController();
+  res.on('close', () => {
+    if (!res.writableEnded) controller.abort();
+  });
+  return controller.signal;
+}
+
+function isAbort(err, signal) {
+  return Boolean(signal && signal.aborted) || (err && /abort/i.test(err.name || ''));
+}
+
 // Analysis endpoint
 app.post('/api/analyze', async (req, res) => {
   res.setHeader('Content-Type', 'text/event-stream');
@@ -590,8 +612,9 @@ app.post('/api/analyze', async (req, res) => {
   res.flushHeaders();
   // SSE comment lines (starting with ":") are ignored by the page.
   startKeepAlive(res, ': keep-alive\n\n');
+  const signal = abortOnDisconnect(res);
 
-  const send = (d) => res.write(`data: ${JSON.stringify(d)}\n\n`);
+  const send = (d) => { if (!res.writableEnded) res.write(`data: ${JSON.stringify(d)}\n\n`); };
 
   try {
     const { documentText, documentName, specialConsiderations } = req.body;
@@ -605,6 +628,7 @@ app.post('/api/analyze', async (req, res) => {
     }
 
     const anthropic = new Anthropic({ apiKey, timeout: CLIENT_TIMEOUT_MS, maxRetries: 2 });
+    const ask = (params) => createMessage(anthropic, params, { signal });
     const text = documentText.substring(0, MAX_DOC_CHARS);
     const documentTruncated = documentText.length > MAX_DOC_CHARS;
     // Document names carry client names, and the privacy notice promises documents
@@ -615,7 +639,7 @@ app.post('/api/analyze', async (req, res) => {
 
     // Step 2: Comprehensive Document Summary with Enhanced Analysis
     send({ step: 2 });
-    const sum = await createMessage(anthropic, {
+    const sum = await ask({
       max_tokens: JSON_MAX_TOKENS,
       messages: [{ role: 'user', content: `You are an expert trust and estate attorney conducting a comprehensive trust document analysis. Analyze this trust document thoroughly.
 
@@ -718,7 +742,7 @@ Be thorough and extract all relevant information. Include confidence levels wher
 
     // Step 3: Evaluate with confidence scoring
     send({ step: 3 });
-    const ev = await createMessage(anthropic, {
+    const ev = await ask({
       max_tokens: JSON_MAX_TOKENS,
       messages: [{ role: 'user', content: `As an expert wealth planner and asset protection attorney, evaluate this trust document against the evaluation framework.
 
@@ -837,7 +861,7 @@ Return JSON:
 
     // Step 5: Generate comprehensive report with all enhancements
     send({ step: 5 });
-    const rpt = await createMessage(anthropic, {
+    const rpt = await ask({
       max_tokens: JSON_MAX_TOKENS,
       messages: [{ role: 'user', content: `Generate a comprehensive trust analysis report with enhanced features.
 
@@ -984,6 +1008,10 @@ Be thorough, specific, and actionable. Prioritize practical guidance over genera
     res.end();
 
   } catch (error) {
+    if (isAbort(error, signal)) {
+      console.log('[analyze] browser disconnected; stopped the analysis');
+      return;
+    }
     console.error('Analysis error:', error.message);
     console.error('Stack:', error.stack);
     
@@ -1486,7 +1514,7 @@ const OCR_PROMPT = `Transcribe every page of this document verbatim, in reading 
 - Reproduce tables as plain text rows.
 - Output only the transcription: no summary, commentary or analysis.`;
 
-async function ocrDocument(anthropic, data, mediaType) {
+async function ocrDocument(anthropic, data, mediaType, signal) {
   const apiKey = (anthropic && anthropic.apiKey) || process.env.ANTHROPIC_API_KEY;
   const model = await getModel(apiKey);
   let maxTokens = OCR_MAX_TOKENS;
@@ -1501,7 +1529,7 @@ async function ocrDocument(anthropic, data, mediaType) {
   for (let round = 0; round <= OCR_MAX_CONTINUATIONS; round++) {
     // Streamed so a long transcription is not cut off by an HTTP timeout.
     const msg = await anthropic.messages
-      .stream({ model, max_tokens: maxTokens, messages })
+      .stream({ model, max_tokens: maxTokens, messages }, { signal })
       .finalMessage();
 
     if (msg.stop_reason === 'refusal') {
@@ -1522,6 +1550,7 @@ async function ocrDocument(anthropic, data, mediaType) {
 }
 
 app.post('/api/ocr', async (req, res) => {
+  let signal = null;
   try {
     const { data, ext } = req.body || {};
     const mediaType = OCR_MEDIA_TYPES[String(ext || '').toLowerCase()];
@@ -1540,13 +1569,18 @@ app.post('/api/ocr', async (req, res) => {
     res.setHeader('X-Accel-Buffering', 'no');
     res.flushHeaders();
     startKeepAlive(res, ' ');
+    signal = abortOnDisconnect(res);
 
     const started = Date.now();
-    const { text, truncated } = await ocrDocument(anthropic, data, mediaType);
+    const { text, truncated } = await ocrDocument(anthropic, data, mediaType, signal);
     // Log size and timing only; document contents and names stay out of logs.
     console.log(`[ocr] ${ext} ${Math.round(data.length * 0.75 / 1024)} KB -> ${text.length} chars in ${Date.now() - started} ms${truncated ? ' (TRUNCATED)' : ''}`);
     res.end(JSON.stringify({ text, truncated }));
   } catch (err) {
+    if (isAbort(err, signal)) {
+      console.log('[ocr] browser disconnected; stopped the transcription');
+      return;
+    }
     console.error('[ocr] failed:', err.status || '', err.message);
     let status = 500;
     let message = 'Could not read the scanned document. Please try again.';
